@@ -22,6 +22,14 @@
  * @APPLE_LICENSE_HEADER_END@
  *
  */
+
+/*
+	Copyright (c) 2013-2015 EasyDarwin.ORG.  All rights reserved.
+	Github: https://github.com/EasyDarwin
+	WEChat: EasyDarwin
+	Website: http://www.easydarwin.org
+*/
+
 /*
     File:       QTSSAdminModule.cpp
 
@@ -51,6 +59,7 @@
 #include "OSMemory.h"
 #include "md5.h"
 #include "md5digest.h"
+#include "mongoose.h"
 
 #if __MacOSX__
 #include <Security/Authorization.h>
@@ -63,6 +72,7 @@
 
 #define DEBUG_ADMIN_MODULE 0
 
+class mongooseThread;
 
 //**************************************************
 #define kAuthNameAndPasswordBuffSize 512
@@ -74,6 +84,7 @@
 static UInt32                   sRequestCount= 0;
 #endif
 
+static mongooseThread*		sMongooseThread = NULL;
 static QTSS_Initialize_Params sQTSSparams;
 
 //static char* sResponseHeader = "HTTP/1.0 200 OK\r\nServer: QTSS\r\nConnection: Close\r\nContent-Type: text/plain\r\n\r\n";
@@ -117,7 +128,11 @@ static AuthorizationRights  sRightSet = { 1, &sRight };
 
 // ATTRIBUTES
 //**************************************************
-enum { kMaxRequestTimeIntervalMilli = 1000, kDefaultRequestTimeIntervalMilli = 50 };
+enum 
+{ 
+	kMaxRequestTimeIntervalMilli = 1000, 
+	kDefaultRequestTimeIntervalMilli = 50
+};
 static UInt32 sDefaultRequestTimeIntervalMilli = kDefaultRequestTimeIntervalMilli;
 static UInt32 sRequestTimeIntervalMilli = kDefaultRequestTimeIntervalMilli;
 
@@ -134,6 +149,13 @@ static Bool16 sDefaultEnableRemoteAdmin = true;
 static QTSS_AttributeID sIPAccessListID = qtssIllegalAttrID;
 static char*            sIPAccessList = NULL;
 static char*            sLocalLoopBackAddress = "127.0.0.*";
+
+//Http Listening port
+static UInt16			sHttpPort = 80;
+static UInt16			sDefaultHttpPort = 80;
+//Http Document Root
+static char*			sDocumentRoot     = NULL;
+static char*			sDefaultDocumentRoot = "./web/";
 
 static char*            sAdministratorGroup = NULL;
 static char*            sDefaultAdministratorGroup = "admin";
@@ -156,6 +178,59 @@ static QTSS_Error RereadPrefs();
 static QTSS_Error AuthorizeAdminRequest(QTSS_RTSPRequestObject request);
 static Bool16 AcceptSession(QTSS_RTSPSessionObject inRTSPSession);
 
+static const char *s_no_cache_header = "Cache-Control: max-age=0, post-check=0, pre-check=0, no-store, no-cache, must-revalidate\r\n";
+
+static void handle_restful_call(struct mg_connection *conn) {
+  char n1[100], n2[100];
+
+  // Get form variables
+  mg_get_var(conn, "n1", n1, sizeof(n1));
+  mg_get_var(conn, "n2", n2, sizeof(n2));
+
+  mg_printf_data(conn, "{ \"result\": %lf }", strtod(n1, NULL) + strtod(n2, NULL));
+}
+
+static int ev_handler(struct mg_connection *conn, enum mg_event ev) {
+  switch (ev) {
+    case MG_AUTH: return MG_TRUE;
+    case MG_REQUEST:
+      if (!strcmp(conn->uri, "/api/sum")) {
+    	handle_restful_call(conn);
+        return MG_TRUE;
+      }
+      mg_send_file(conn, "./index.html", s_no_cache_header);
+      return MG_MORE;
+    default: return MG_FALSE;
+  }
+}
+
+class mongooseThread : public OSThread
+{
+    public:
+        mongooseThread() : OSThread() {}
+        virtual ~mongooseThread() {}
+
+    private:
+        void Entry();
+};
+
+
+//Mongoose
+
+void mongooseThread::Entry()
+{
+	struct mg_server *mongooseserver;
+	//// Create and configure the server
+	mongooseserver = mg_create_server((void *) "1", ::ev_handler);
+	char listening_port[6];
+	sprintf(listening_port, "%d", sHttpPort);
+	mg_set_option(mongooseserver, "listening_port", listening_port);
+	mg_set_option(mongooseserver, "document_root", sDocumentRoot);
+	printf("mongoose listen on port:%s document path:%s \n", listening_port , sDocumentRoot);
+	//run server
+	for (;;) mg_poll_server((struct mg_server *) mongooseserver, 1000);
+    mg_destroy_server(&mongooseserver);
+}
 
 #if !DEBUG_ADMIN_MODULE
     #define APITests_DEBUG() 
@@ -402,11 +477,17 @@ QTSS_Error RereadPrefs()
     QTSSModuleUtils::GetAttribute(sModulePrefs, "RequestTimeIntervalMilli",     qtssAttrDataTypeUInt32, &sRequestTimeIntervalMilli, &sDefaultRequestTimeIntervalMilli, sizeof(sRequestTimeIntervalMilli));
     QTSSModuleUtils::GetAttribute(sModulePrefs, "enable_remote_admin",  qtssAttrDataTypeBool16, &sEnableRemoteAdmin, &sDefaultEnableRemoteAdmin, sizeof(sDefaultEnableRemoteAdmin));
 
+	QTSSModuleUtils::GetAttribute(sModulePrefs, "http_port",     qtssAttrDataTypeUInt16, &sHttpPort, &sDefaultHttpPort, sizeof(sHttpPort));
+
+	delete [] sDocumentRoot;
+    sDocumentRoot = QTSSModuleUtils::GetStringAttribute(sModulePrefs, "document_root", sDefaultDocumentRoot);
+    
     delete [] sAdministratorGroup;
     sAdministratorGroup = QTSSModuleUtils::GetStringAttribute(sModulePrefs, "AdministratorGroup", sDefaultAdministratorGroup);
     
     if (sRequestTimeIntervalMilli > kMaxRequestTimeIntervalMilli) 
-    {   sRequestTimeIntervalMilli = kMaxRequestTimeIntervalMilli;
+    {   
+		sRequestTimeIntervalMilli = kMaxRequestTimeIntervalMilli;
     }
 
     (void)QTSS_SetValue(sModule, qtssModDesc, 0, sDesc, strlen(sDesc)+1);   
@@ -428,7 +509,11 @@ QTSS_Error Initialize(QTSS_Initialize_Params* inParams)
     sModulePrefs = QTSSModuleUtils::GetModulePrefsObject(sModule);
     sServerPrefs = inParams->inPrefs;
     
+	//��ȡmongoose����˿ڵ�����
     RereadPrefs();
+	//����mongoose�߳�
+	sMongooseThread = NEW mongooseThread();
+	sMongooseThread->Start();
     
     return QTSS_NoErr;
 }
