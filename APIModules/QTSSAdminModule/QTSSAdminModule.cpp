@@ -37,6 +37,19 @@
 
 */
 
+#include <string.h>
+#include <sys/stat.h>
+
+#ifdef _WIN32
+
+#include <direct.h>
+//#include <winsvc.h>
+//#include <shlobj.h>
+
+#include <sys/wait.h>
+#include <unistd.h>
+
+#endif // _WIN32
 
 #ifndef __Win32__
     #include <unistd.h>     /* for getopt() et al */
@@ -150,13 +163,6 @@ static QTSS_AttributeID sIPAccessListID = qtssIllegalAttrID;
 static char*            sIPAccessList = NULL;
 static char*            sLocalLoopBackAddress = "127.0.0.*";
 
-//Http Listening port
-static UInt16			sHttpPort = 80;
-static UInt16			sDefaultHttpPort = 80;
-//Http Document Root
-static char*			sDocumentRoot     = NULL;
-static char*			sDefaultDocumentRoot = "./web/";
-
 static char*            sAdministratorGroup = NULL;
 static char*            sDefaultAdministratorGroup = "admin";
 
@@ -178,9 +184,72 @@ static QTSS_Error RereadPrefs();
 static QTSS_Error AuthorizeAdminRequest(QTSS_RTSPRequestObject request);
 static Bool16 AcceptSession(QTSS_RTSPSessionObject inRTSPSession);
 
-static const char *s_no_cache_header = "Cache-Control: max-age=0, post-check=0, pre-check=0, no-store, no-cache, must-revalidate\r\n";
 
-static void handle_restful_call(struct mg_connection *conn) {
+//**************************************************
+//Http Listening port
+static UInt16			sHttpPort = 1080;
+static UInt16			sDefaultHttpPort = 80;
+//Http Document Root
+static char*			sDocumentRoot     = NULL;
+static char*			sDefaultDocumentRoot = "./";
+//resource path is EasyDarwin/WebResource
+
+//document_root is assigned here.
+//In here relative path and absolute path are all accepted,
+//but empty path will raise a http 404 error when some file is required.
+//May be an absolute path is more appropriate than relative one when the server is embeded in some appliction (eg. EasyDarwin).
+
+static int is_file_exist(char *filename){
+    struct stat buf;
+    return stat(filename,&buf)+1;
+}
+
+static int send_upload_page(struct mg_connection *conn) {
+    //    const char *data;
+    mg_printf_data(conn, "%s",
+                   "<html><body>Upload example."
+                   "<form method=\"POST\" action=\"/api/handle_upload_request\" "
+                   "  enctype=\"multipart/form-data\">"
+                   "<input type=\"file\" name=\"file1\" /> <br/>"
+                   "<input type=\"file\" name=\"file2\" /> <br/>"
+                   "<input type=\"submit\" value=\"Upload\" />"
+                   "</form>");
+    return MG_TRUE;
+}
+
+static int handle_upload_request(struct mg_connection *conn) {
+    const char *data;
+    int data_len, ofs = 0;
+    char var_name[100], file_name[100];
+
+    while ((ofs = mg_parse_multipart(conn->content + ofs, conn->content_len - ofs,
+                                     var_name, sizeof(var_name),
+                                     file_name, sizeof(file_name),
+                                     &data, &data_len)) > 0) {
+        printf("%s",conn->content);
+        FILE *fp=NULL;
+        char file_path[200];
+        sprintf(file_path,"%s/api/%s",sDocumentRoot,file_name);
+        printf("%s/api/%s",sDocumentRoot,file_name);
+        if((fp= fopen(file_path, "wb"))!=NULL)
+        {
+            fwrite(data,1,data_len,fp);
+            fclose(fp);
+        }
+        mg_printf_data(conn, "var: %s, file_name: %s, size: %d bytes<br>",
+                       var_name, file_name, data_len);
+
+    }
+
+    mg_printf_data(conn, "%s", "</body></html>");
+    return MG_TRUE;
+}
+
+static const char *s_no_cache_header =
+  "Cache-Control: max-age=0, post-check=0, "
+  "pre-check=0, no-store, no-cache, must-revalidate\r\n";
+
+static int handle_sum_call(struct mg_connection *conn) {
   char n1[100], n2[100];
 
   // Get form variables
@@ -188,19 +257,149 @@ static void handle_restful_call(struct mg_connection *conn) {
   mg_get_var(conn, "n2", n2, sizeof(n2));
 
   mg_printf_data(conn, "{ \"result\": %lf }", strtod(n1, NULL) + strtod(n2, NULL));
+  return MG_TRUE;
+}
+
+static int router(struct mg_connection *conn){
+    //A router is the map describes the webpage architecture and relationships between actions and handler funcions.
+    char realpath[1024];
+    //Some rules, such as length of uri or path should be restricted to avoid segment errors.
+    if (*(sDocumentRoot+strlen(sDocumentRoot)-1)=='/')
+    {
+        *(sDocumentRoot+strlen(sDocumentRoot)-1)='\0';
+        //remove the '/' ending for document_root if existed
+    }
+    if (*(conn->uri+(strlen(conn->uri)-1))=='/'){
+        sprintf(realpath,"%s%sindex.html",sDocumentRoot,conn->uri);
+        //for dir path (ended with '/'), an index.html page is assigned
+    }
+    else
+    {
+        sprintf(realpath,"%s%s",sDocumentRoot,conn->uri);//
+        //for file resource, uri path will be converted to local path (eg. absolute path)
+    }
+    printf("realpath: %s\n",realpath);
+    if (is_file_exist(realpath)){
+        mg_send_file(conn, realpath, s_no_cache_header);
+        //then, the file will be sent to client using mg_send_file.
+        return MG_MORE;
+    }
+    // For other uris which were neither ended with '/' nor real files existing on disk will be supposed to post actions.
+    // As the code convention, post actions will be assign to corresponding handle functions
+    if (!strcmp(conn->uri, "/api/sum")) {
+        return handle_sum_call(conn);
+        //demo for ajax
+    }
+    if(!strcmp(conn->uri,"/api/upload")){
+        //demo for bulitin webpage
+        return send_upload_page(conn);
+    }
+    if(!strcmp(conn->uri,"/api/handle_upload_request")){
+        return handle_upload_request(conn);
+    }
+    mg_printf_data(conn, "error 404, %s is not found", conn->uri);
+    //
+    return MG_TRUE;
+}
+
+static int digested_authorize(struct mg_connection *conn){
+    int result = MG_FALSE; // Not authorized
+    FILE *fp;
+    // To populate passwords file, do
+    // web_server -A my_passwords.txt mydomain.com admin admin
+    if ((fp = fopen("my_passwords.txt", "r")) != NULL) {
+        result = mg_authorize_digest(conn, fp);
+        fclose(fp);
+    }
+    return result;
+}
+
+//function below should be move to an indepedent file used to generate password file when initial the server
+#if !defined(MONGOOSE_NO_AUTH) && !defined(MONGOOSE_NO_FILESYSTEM)
+
+int modify_passwords_file(const char *fname, const char *domain,
+                          const char *user, const char *pass) {
+  int found;
+  char line[512], u[512], d[512], ha1[33], tmp[PATH_MAX];
+  FILE *fp, *fp2;
+
+  found = 0;
+  fp = fp2 = NULL;
+
+  // Regard empty password as no password - remove user record.
+  if (pass != NULL && pass[0] == '\0') {
+    pass = NULL;
+  }
+
+  (void) snprintf(tmp, sizeof(tmp), "%s.tmp", fname);
+
+  // Create the file if does not exist
+  if ((fp = fopen(fname, "a+")) != NULL) {
+    fclose(fp);
+  }
+
+  // Open the given file and temporary file
+  if ((fp = fopen(fname, "r")) == NULL) {
+    return 0;
+  } else if ((fp2 = fopen(tmp, "w+")) == NULL) {
+    fclose(fp);
+    return 0;
+  }
+
+  // Copy the stuff to temporary file
+  while (fgets(line, sizeof(line), fp) != NULL) {
+    if (sscanf(line, "%[^:]:%[^:]:%*s", u, d) != 2) {
+      continue;
+    }
+
+    if (!strcmp(u, user) && !strcmp(d, domain)) {
+      found++;
+      if (pass != NULL) {
+        mg_md5(ha1, user, ":", domain, ":", pass, NULL);
+        fprintf(fp2, "%s:%s:%s\n", user, domain, ha1);
+      }
+    } else {
+      fprintf(fp2, "%s", line);
+    }
+  }
+
+  // If new user, just add it
+  if (!found && pass != NULL) {
+    mg_md5(ha1, user, ":", domain, ":", pass, NULL);
+    fprintf(fp2, "%s:%s:%s\n", user, domain, ha1);
+  }
+
+  // Close files
+  fclose(fp);
+  fclose(fp2);
+
+  // Put the temp file in place of real file
+  remove(fname);
+  rename(tmp, fname);
+
+  return 1;
+}
+#endif
+
+static int change_username_and_password(char * htpasswd_filepath, char * realm, char *username, char *password){
+	//used for generated a username&password file
+	//<htpasswd_file> <realm> <username> <password> like ./my_passwords.txt , mydomain.com, admin, admin
+#if !defined(MONGOOSE_NO_AUTH) && !defined(MONGOOSE_NO_FILESYSTEM)
+    return (modify_passwords_file(htpasswd_filepath, realm, username, password) ?
+    		MG_TRUE: MG_FALSE);
+#endif
+    return MG_TRUE;
 }
 
 static int ev_handler(struct mg_connection *conn, enum mg_event ev) {
   switch (ev) {
-    case MG_AUTH: return MG_TRUE;
+    case MG_AUTH:
+          return digested_authorize(conn);
+//          return MG_TRUE; //not authorized
     case MG_REQUEST:
-      if (!strcmp(conn->uri, "/api/sum")) {
-    	handle_restful_call(conn);
-        return MG_TRUE;
-      }
-      mg_send_file(conn, "./index.html", s_no_cache_header);
-      return MG_MORE;
-    default: return MG_FALSE;
+          return router(conn);
+    default:
+          return MG_FALSE;
   }
 }
 
@@ -225,8 +424,8 @@ void mongooseThread::Entry()
 	char listening_port[6];
 	sprintf(listening_port, "%d", sHttpPort);
 	mg_set_option(mongooseserver, "listening_port", listening_port);
-	mg_set_option(mongooseserver, "document_root", sDocumentRoot);
-	printf("mongoose listen on port:%s document path:%s \n", listening_port , sDocumentRoot);
+//	mg_set_option(mongooseserver, "document_root", sDocumentRoot); //donot use it
+//	printf("mongoose listen on port:%s document path:%s \n", listening_port , sDocumentRoot);
 	//run server
 	for (;;) mg_poll_server((struct mg_server *) mongooseserver, 1000);
     mg_destroy_server(&mongooseserver);
