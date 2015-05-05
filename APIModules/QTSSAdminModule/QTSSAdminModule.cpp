@@ -249,6 +249,15 @@ static const char *s_no_cache_header =
   "Cache-Control: max-age=0, post-check=0, "
   "pre-check=0, no-store, no-cache, must-revalidate\r\n";
 
+static const char *error_404=
+"		<html>\
+		<head><title>404 Not Found</title></head>\
+		<body bgcolor=\"white\">\
+		<center><h1><center>404 Not Found</center></h1></center>\
+		<hr><center>EasyDarwin</center>\
+		</body>\
+		</html>";
+
 static int handle_sum_call(struct mg_connection *conn) {
   char n1[100], n2[100];
 
@@ -286,6 +295,7 @@ static int router(struct mg_connection *conn){
     }
     // For other uris which were neither ended with '/' nor real files existing on disk will be supposed to post actions.
     // As the code convention, post actions will be assign to corresponding handle functions
+    //TODO:make an action-handle map
     if (!strcmp(conn->uri, "/api/sum")) {
         return handle_sum_call(conn);
         //demo for ajax
@@ -297,7 +307,7 @@ static int router(struct mg_connection *conn){
     if(!strcmp(conn->uri,"/api/handle_upload_request")){
         return handle_upload_request(conn);
     }
-    mg_printf_data(conn, "error 404, %s is not found", conn->uri);
+    mg_printf_data(conn, error_404, conn->uri);
     //
     return MG_TRUE;
 }
