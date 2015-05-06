@@ -306,6 +306,37 @@ static int handle_upload_request(struct mg_connection *conn) {
     return MG_TRUE;
 }
 
+static int get_pullrtsplist(char *rtspurilist){
+//TODO:get pulling-mode rtsp uris from xml,
+//rtspurilist is a string like "\"rtspuri1\",\"rtspur2\",..."
+//return list length
+	int listlength=0;
+//	TODO: please fix here
+	return listlength;
+}
+static int handle_pullrtspurilist_request(struct mg_connection *conn){
+	//response for requesting pulling-mode rtsp uri list
+	char rtspurilist[102400]; //array of rtsp uri list
+	int listlength=0;
+	listlength=get_pullrtsplist(rtspurilist);
+	mg_printf_data(conn, "{\"listlength\":%lf,\"pullrtsplist\":[\%s\"] }",listlength,rtspurilist);
+	return MG_TRUE;
+}
+
+static void put_pullsinglertspuri(char *rtspuri){
+//TODO: add a rtsp uri to pulling mode xml, and then do something else
+//rtspurilist is a string like "\"rtspuri1\",\"rtspur2\",..."
+//	TODO: please fix here
+}
+static int handle_addpullrtspuri_request(struct mg_connection *conn){
+	//response for requesting pulling-mode rtsp uri list
+	char rtspuri[1024]; //array of rtsp uri list
+	mg_get_var(conn, "rtspuri", rtspuri, sizeof(rtspuri));
+	put_pullsinglertspuri(rtspuri);
+	return handle_pullrtspurilist_request(conn);
+	// return all rtspuris to client
+}
+
 static int action_router(struct mg_connection *conn){
 	   // For other uris which were neither ended with '/' nor real files existing on disk will be supposed to post actions.
 	    // As the code convention, post actions will be assign to corresponding handle functions
@@ -316,6 +347,12 @@ static int action_router(struct mg_connection *conn){
 	    }
 	    if(!strcmp(conn->uri,"/api/handle_upload_request")){
 	        return handle_upload_request(conn);
+	    }
+	    if(!strcmp(conn->uri,"/pullingmode/pullrtspurilist")){
+	    	return handle_pullrtspurilist_request(conn);
+	    }
+	    if(!strcmp(conn->uri,"/pullingmode/putpullrtspuri")){
+	    	return handle_addpullrtspuri_request(conn);
 	    }
 	    return MG_FALSE;
 }
