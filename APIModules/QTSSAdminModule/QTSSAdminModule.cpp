@@ -249,14 +249,18 @@ static const char *s_no_cache_header =
   "Cache-Control: max-age=0, post-check=0, "
   "pre-check=0, no-store, no-cache, must-revalidate\r\n";
 
-static const char *error_404=
-"		<html>\
-		<head><title>404 Not Found</title></head>\
-		<body bgcolor=\"white\">\
-		<center><h1><center>404 Not Found</center></h1></center>\
-		<hr><center>EasyDarwin</center>\
-		</body>\
-		</html>";
+static int send_error404_page(struct mg_connection *conn){
+	static const char *error_404=
+	"		<html>\
+			<head><title>404 Not Found</title></head>\
+			<body bgcolor=\"white\">\
+			<center><h1><center>404 Not Found</center></h1></center>\
+			<hr><center>EasyDarwin</center>\
+			</body>\
+			</html>";
+	mg_printf_data(conn, error_404, conn->uri);
+	return MG_TRUE;
+}
 
 static int handle_sum_call(struct mg_connection *conn) {
   char n1[100], n2[100];
@@ -322,9 +326,8 @@ static int router(struct mg_connection *conn){
 	result=action_router(conn);
 	if	(result!=MG_FALSE)
 		return result;
-    mg_printf_data(conn, error_404, conn->uri);
+	return send_error404_page(conn);
     //page or action is not exist
-    return MG_TRUE;
 }
 
 static int digested_authorize(struct mg_connection *conn){
