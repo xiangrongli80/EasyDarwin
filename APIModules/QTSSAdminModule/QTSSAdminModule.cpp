@@ -199,10 +199,15 @@ static char*			sDefaultDocumentRoot = "./";
 //but empty path will raise a http 404 error when some file is required.
 //May be an absolute path is more appropriate than relative one when the server is embeded in some appliction (eg. EasyDarwin).
 
+//**************************page related method is below
 static int is_file_exist(char *filename){
     struct stat buf;
     return stat(filename,&buf)+1;
 }
+
+static const char *s_no_cache_header =
+  "Cache-Control: max-age=0, post-check=0, "
+  "pre-check=0, no-store, no-cache, must-revalidate\r\n";
 
 static int send_upload_page(struct mg_connection *conn) {
     //    const char *data;
@@ -217,38 +222,6 @@ static int send_upload_page(struct mg_connection *conn) {
     return MG_TRUE;
 }
 
-static int handle_upload_request(struct mg_connection *conn) {
-    const char *data;
-    int data_len, ofs = 0;
-    char var_name[100], file_name[100];
-
-    while ((ofs = mg_parse_multipart(conn->content + ofs, conn->content_len - ofs,
-                                     var_name, sizeof(var_name),
-                                     file_name, sizeof(file_name),
-                                     &data, &data_len)) > 0) {
-        printf("%s",conn->content);
-        FILE *fp=NULL;
-        char file_path[200];
-        sprintf(file_path,"%s/api/%s",sDocumentRoot,file_name);
-        printf("%s/api/%s",sDocumentRoot,file_name);
-        if((fp= fopen(file_path, "wb"))!=NULL)
-        {
-            fwrite(data,1,data_len,fp);
-            fclose(fp);
-        }
-        mg_printf_data(conn, "var: %s, file_name: %s, size: %d bytes<br>",
-                       var_name, file_name, data_len);
-
-    }
-
-    mg_printf_data(conn, "%s", "</body></html>");
-    return MG_TRUE;
-}
-
-static const char *s_no_cache_header =
-  "Cache-Control: max-age=0, post-check=0, "
-  "pre-check=0, no-store, no-cache, must-revalidate\r\n";
-
 static int send_error404_page(struct mg_connection *conn){
 	static const char *error_404=
 	"		<html>\
@@ -260,17 +233,6 @@ static int send_error404_page(struct mg_connection *conn){
 			</html>";
 	mg_printf_data(conn, error_404, conn->uri);
 	return MG_TRUE;
-}
-
-static int handle_sum_call(struct mg_connection *conn) {
-  char n1[100], n2[100];
-
-  // Get form variables
-  mg_get_var(conn, "n1", n1, sizeof(n1));
-  mg_get_var(conn, "n2", n2, sizeof(n2));
-
-  mg_printf_data(conn, "{ \"result\": %lf }", strtod(n1, NULL) + strtod(n2, NULL));
-  return MG_TRUE;
 }
 
 static int page_router(struct mg_connection *conn){
@@ -302,6 +264,46 @@ static int page_router(struct mg_connection *conn){
     return MG_FALSE;
 }
 
+//**************************action related method is below
+static int handle_sum_call(struct mg_connection *conn) {
+  char n1[100], n2[100];
+
+  // Get form variables
+  mg_get_var(conn, "n1", n1, sizeof(n1));
+  mg_get_var(conn, "n2", n2, sizeof(n2));
+
+  mg_printf_data(conn, "{ \"result\": %lf }", strtod(n1, NULL) + strtod(n2, NULL));
+  return MG_TRUE;
+}
+
+static int handle_upload_request(struct mg_connection *conn) {
+    const char *data;
+    int data_len, ofs = 0;
+    char var_name[100], file_name[100];
+
+    while ((ofs = mg_parse_multipart(conn->content + ofs, conn->content_len - ofs,
+                                     var_name, sizeof(var_name),
+                                     file_name, sizeof(file_name),
+                                     &data, &data_len)) > 0) {
+        printf("%s",conn->content);
+        FILE *fp=NULL;
+        char file_path[200];
+        sprintf(file_path,"%s/api/%s",sDocumentRoot,file_name);
+        printf("%s/api/%s",sDocumentRoot,file_name);
+        if((fp= fopen(file_path, "wb"))!=NULL)
+        {
+            fwrite(data,1,data_len,fp);
+            fclose(fp);
+        }
+        mg_printf_data(conn, "var: %s, file_name: %s, size: %d bytes<br>",
+                       var_name, file_name, data_len);
+
+    }
+
+    mg_printf_data(conn, "%s", "</body></html>");
+    return MG_TRUE;
+}
+
 static int action_router(struct mg_connection *conn){
 	   // For other uris which were neither ended with '/' nor real files existing on disk will be supposed to post actions.
 	    // As the code convention, post actions will be assign to corresponding handle functions
@@ -315,7 +317,7 @@ static int action_router(struct mg_connection *conn){
 	    }
 	    return MG_FALSE;
 }
-
+//**************************action related method ended here
 static int router(struct mg_connection *conn){
     //A router is the map describes the webpage architecture and relationships between actions and handler funcions.
     //Some rules, such as length of uri or path should be restricted to avoid segment errors.
