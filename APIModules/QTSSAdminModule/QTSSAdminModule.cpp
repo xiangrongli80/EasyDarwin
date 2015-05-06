@@ -72,7 +72,9 @@
 #include "OSMemory.h"
 #include "md5.h"
 #include "md5digest.h"
+
 #include "mongoose.h"
+#include "frozen.h"
 
 #if __MacOSX__
 #include <Security/Authorization.h>

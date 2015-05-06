@@ -139,6 +139,7 @@ CPPFILES =              Server.tproj/GenerateXMLPrefs.cpp \
 			APIModules/QTSSAdminModule/AdminQuery.cpp \
 			APIModules/QTSSAdminModule/QTSSAdminModule.cpp \
 			APIModules/QTSSAdminModule/mongoose.c \
+			APIModules/QTSSAdminModule/frozen.c \
 			APIModules/QTSSMP3StreamingModule/QTSSMP3StreamingModule.cpp \
 			APIModules/QTSSRTPFileModule/QTSSRTPFileModule.cpp \
 			APIModules/QTSSRTPFileModule/RTPFileSession.cpp \
