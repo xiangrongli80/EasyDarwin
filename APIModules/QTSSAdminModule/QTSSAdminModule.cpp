@@ -269,10 +269,8 @@ static int handle_sum_call(struct mg_connection *conn) {
   return MG_TRUE;
 }
 
-static int router(struct mg_connection *conn){
-    //A router is the map describes the webpage architecture and relationships between actions and handler funcions.
-    char realpath[1024];
-    //Some rules, such as length of uri or path should be restricted to avoid segment errors.
+static int page_router(struct mg_connection *conn){
+	char realpath[1024];
     if (*(sDocumentRoot+strlen(sDocumentRoot)-1)=='/')
     {
         *(sDocumentRoot+strlen(sDocumentRoot)-1)='\0';
@@ -293,22 +291,39 @@ static int router(struct mg_connection *conn){
         //then, the file will be sent to client using mg_send_file.
         return MG_MORE;
     }
-    // For other uris which were neither ended with '/' nor real files existing on disk will be supposed to post actions.
-    // As the code convention, post actions will be assign to corresponding handle functions
-    //TODO:make an action-handle map
-    if (!strcmp(conn->uri, "/api/sum")) {
-        return handle_sum_call(conn);
-        //demo for ajax
-    }
-    if(!strcmp(conn->uri,"/api/upload")){
-        //demo for bulitin webpage
+    if(!strcmp(conn->uri,"/api/upload.html")){
+        // for some bulitin webpage
         return send_upload_page(conn);
     }
-    if(!strcmp(conn->uri,"/api/handle_upload_request")){
-        return handle_upload_request(conn);
-    }
+    return MG_FALSE;
+}
+
+static int action_router(struct mg_connection *conn){
+	   // For other uris which were neither ended with '/' nor real files existing on disk will be supposed to post actions.
+	    // As the code convention, post actions will be assign to corresponding handle functions
+	    //TODO:make an action-handle map
+	    if (!strcmp(conn->uri, "/api/sum")) {
+	        return handle_sum_call(conn);
+	        //demo for ajax
+	    }
+	    if(!strcmp(conn->uri,"/api/handle_upload_request")){
+	        return handle_upload_request(conn);
+	    }
+	    return MG_FALSE;
+}
+
+static int router(struct mg_connection *conn){
+    //A router is the map describes the webpage architecture and relationships between actions and handler funcions.
+    //Some rules, such as length of uri or path should be restricted to avoid segment errors.
+	int result;
+	result=page_router(conn);
+	if	(result!=MG_FALSE)
+		return result;
+	result=action_router(conn);
+	if	(result!=MG_FALSE)
+		return result;
     mg_printf_data(conn, error_404, conn->uri);
-    //
+    //page or action is not exist
     return MG_TRUE;
 }
 
