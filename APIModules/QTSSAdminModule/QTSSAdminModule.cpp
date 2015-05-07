@@ -209,7 +209,7 @@ static const char* passwordfile="my_passwords.txt";
 #ifdef __Win32__
 #define DIRSEP '/'
 #else
-#define DIRSEP '/'
+//#define DIRSEP '/'
 #endif
 
 static int full_path(const char* rootpath,const char *pathin,char *pathout){
@@ -217,11 +217,11 @@ static int full_path(const char* rootpath,const char *pathin,char *pathout){
 		return MG_FALSE;
 	char *rootpathtmp=NULL;
 	rootpathtmp=strdup(rootpath);
-    if (*(rootpathtmp+strlen(rootpathtmp)-1)==DIRSEP)
-    {
-        *(rootpathtmp+strlen(rootpathtmp)-1)='\0';
-        //remove the '/' ending for document_root if existed
-    }
+//    if (*(rootpathtmp+strlen(rootpathtmp)-1)==DIRSEP)//not needed
+//    {
+//        *(rootpathtmp+strlen(rootpathtmp)-1)='\0';
+//        //remove the '/' ending for document_root if existed
+//    }
     sprintf(pathout,"%s%s",rootpath,pathin);//
         //for file resource, uri path will be converted to local path (eg. absolute path)
     free(rootpathtmp);
