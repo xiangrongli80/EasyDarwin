@@ -205,13 +205,18 @@ static char*			sDefaultDocumentRoot = "./";
 static const char* indexfile="index.html";
 static const char* passwordfile="my_passwords.txt";
 #define MAXPATHLENGTH 1024
+#ifdef __Win32__
+#define DIRSEP '/'
+#else
+#define DIRSEP '/'
+#endif
 
 static int full_path(const char* rootpath,const char *pathin,char *pathout){
 	if(strlen(rootpath)+strlen(pathin)>=MAXPATHLENGTH)
 		return MG_FALSE;
 	char *rootpathtmp=NULL;
 	rootpathtmp=strdup(rootpath);
-    if (*(rootpathtmp+strlen(rootpathtmp)-1)=='/')
+    if (*(rootpathtmp+strlen(rootpathtmp)-1)==DIRSEP)
     {
         *(rootpathtmp+strlen(rootpathtmp)-1)='\0';
         //remove the '/' ending for document_root if existed
