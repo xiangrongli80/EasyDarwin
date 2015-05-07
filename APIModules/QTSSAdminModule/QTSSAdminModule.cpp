@@ -46,8 +46,8 @@
 //#include <winsvc.h>
 //#include <shlobj.h>
 
-#include <sys/wait.h>
-#include <unistd.h>
+//#include <sys/wait.h>
+//#include <unistd.h>
 
 #endif // _WIN32
 
@@ -204,7 +204,8 @@ static char*			sDefaultDocumentRoot = "./";
 //**************************page related method is below
 static const char* indexfile="index.html";
 static const char* passwordfile="my_passwords.txt";
-#define MAXPATHLENGTH 1024
+#define MAX_PATH_LEN 256
+
 #ifdef __Win32__
 #define DIRSEP '/'
 #else
@@ -212,7 +213,7 @@ static const char* passwordfile="my_passwords.txt";
 #endif
 
 static int full_path(const char* rootpath,const char *pathin,char *pathout){
-	if(strlen(rootpath)+strlen(pathin)>=MAXPATHLENGTH)
+	if(strlen(rootpath)+strlen(pathin)>=MAX_PATH_LEN)
 		return MG_FALSE;
 	char *rootpathtmp=NULL;
 	rootpathtmp=strdup(rootpath);
@@ -269,13 +270,13 @@ static int page_router(struct mg_connection *conn){
         return send_upload_page(conn);
     }
     //************ for pages on disk
-	char pagepath[MAXPATHLENGTH];
-	char pagefullpath[MAXPATHLENGTH];
-	if (strlen(conn->uri)<MAXPATHLENGTH)
+	char pagepath[MAX_PATH_LEN];
+	char pagefullpath[MAX_PATH_LEN];
+	if (strlen(conn->uri) < MAX_PATH_LEN)
 		strcpy(pagepath,conn->uri);
 	else
 		return MG_FALSE;
-    if ((*(pagepath+(strlen(pagepath)-1))=='/')&&(strlen(indexfile)+strlen(indexfile)<MAXPATHLENGTH)){
+    if ((*(pagepath+(strlen(pagepath)-1))=='/')&&(strlen(indexfile)+strlen(indexfile) < MAX_PATH_LEN)){
         strcat(pagepath,indexfile);
         //for dir path (ended with '/'), an index.html page is assigned
     }
@@ -397,7 +398,7 @@ static int router(struct mg_connection *conn){
 
 static int digested_authorize(struct mg_connection *conn){
     int result = MG_FALSE; // Not authorized
-    char fullfilepath[MAXPATHLENGTH];
+    char fullfilepath[MAX_PATH_LEN];
     FILE *fp;
     // To populate passwords file, do
     // web_server -A my_passwords.txt mydomain.com admin admin
@@ -416,7 +417,7 @@ static int digested_authorize(struct mg_connection *conn){
 int modify_passwords_file(const char *fname, const char *domain,
                           const char *user, const char *pass) {
   int found;
-  char line[512], u[512], d[512], ha1[33], tmp[PATH_MAX];
+  char line[512], u[512], d[512], ha1[33], tmp[MAX_PATH_LEN];
   FILE *fp, *fp2;
 
   found = 0;
@@ -427,7 +428,7 @@ int modify_passwords_file(const char *fname, const char *domain,
     pass = NULL;
   }
 
-  (void) snprintf(tmp, sizeof(tmp), "%s.tmp", fname);
+  (void) qtss_snprintf(tmp, sizeof(tmp), "%s.tmp", fname);
 
   // Create the file if does not exist
   if ((fp = fopen(fname, "a+")) != NULL) {
