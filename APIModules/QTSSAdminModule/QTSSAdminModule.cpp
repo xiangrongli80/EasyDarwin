@@ -202,6 +202,26 @@ static char*			sDefaultDocumentRoot = "./";
 //May be an absolute path is more appropriate than relative one when the server is embeded in some appliction (eg. EasyDarwin).
 
 //**************************page related method is below
+static const char* indexfile="index.html";
+static const char* passwordfile="my_passwords.txt";
+#define MAXPATHLENGTH 1024
+
+static int full_path(const char* rootpath,const char *pathin,char *pathout){
+	if(strlen(rootpath)+strlen(pathin)>=MAXPATHLENGTH)
+		return MG_FALSE;
+	char *rootpathtmp=NULL;
+	rootpathtmp=strdup(rootpath);
+    if (*(rootpathtmp+strlen(rootpathtmp)-1)=='/')
+    {
+        *(rootpathtmp+strlen(rootpathtmp)-1)='\0';
+        //remove the '/' ending for document_root if existed
+    }
+    sprintf(pathout,"%s%s",rootpath,pathin);//
+        //for file resource, uri path will be converted to local path (eg. absolute path)
+    free(rootpathtmp);
+    return MG_TRUE;
+}
+
 static int is_file_exist(char *filename){
     struct stat buf;
     return stat(filename,&buf)+1;
@@ -238,30 +258,29 @@ static int send_error404_page(struct mg_connection *conn){
 }
 
 static int page_router(struct mg_connection *conn){
-	char realpath[1024];
-    if (*(sDocumentRoot+strlen(sDocumentRoot)-1)=='/')
-    {
-        *(sDocumentRoot+strlen(sDocumentRoot)-1)='\0';
-        //remove the '/' ending for document_root if existed
+	//************ for bulitin webpages
+    if(!strcmp(conn->uri,"/api/upload.html")){
+
+        return send_upload_page(conn);
     }
-    if (*(conn->uri+(strlen(conn->uri)-1))=='/'){
-        sprintf(realpath,"%s%sindex.html",sDocumentRoot,conn->uri);
+    //************ for pages on disk
+	char pagepath[MAXPATHLENGTH];
+	char pagefullpath[MAXPATHLENGTH];
+	if (strlen(conn->uri)<MAXPATHLENGTH)
+		strcpy(pagepath,conn->uri);
+	else
+		return MG_FALSE;
+    if ((*(pagepath+(strlen(pagepath)-1))=='/')&&(strlen(indexfile)+strlen(indexfile)<MAXPATHLENGTH)){
+        strcat(pagepath,indexfile);
         //for dir path (ended with '/'), an index.html page is assigned
     }
-    else
-    {
-        sprintf(realpath,"%s%s",sDocumentRoot,conn->uri);//
-        //for file resource, uri path will be converted to local path (eg. absolute path)
-    }
-    printf("realpath: %s\n",realpath);
-    if (is_file_exist(realpath)){
-        mg_send_file(conn, realpath, s_no_cache_header);
+
+    if ((sDocumentRoot==NULL)||(full_path(sDocumentRoot,pagepath,pagefullpath)==MG_FALSE))
+		return MG_FALSE;
+    if (is_file_exist(pagefullpath)){
+        mg_send_file(conn, pagefullpath, s_no_cache_header);
         //then, the file will be sent to client using mg_send_file.
         return MG_MORE;
-    }
-    if(!strcmp(conn->uri,"/api/upload.html")){
-        // for some bulitin webpage
-        return send_upload_page(conn);
     }
     return MG_FALSE;
 }
@@ -373,10 +392,13 @@ static int router(struct mg_connection *conn){
 
 static int digested_authorize(struct mg_connection *conn){
     int result = MG_FALSE; // Not authorized
+    char fullfilepath[MAXPATHLENGTH];
     FILE *fp;
     // To populate passwords file, do
     // web_server -A my_passwords.txt mydomain.com admin admin
-    if ((fp = fopen("my_passwords.txt", "r")) != NULL) {
+    if (full_path(sDocumentRoot,passwordfile,fullfilepath)==MG_FALSE)
+    	return MG_FALSE;
+    if ((fp = fopen(fullfilepath, "r")) != NULL) {
         result = mg_authorize_digest(conn, fp);
         fclose(fp);
     }
@@ -1396,6 +1418,7 @@ QTSS_Error FilterRequest(QTSS_Filter_Params* inParams)
     return QTSS_NoErr;
 
 }
+
 
 
 
