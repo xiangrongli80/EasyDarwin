@@ -62,7 +62,8 @@
 #include "QTSSAccessLogModule.h"
 #include "QTSSFlowControlModule.h"
 #include "QTSSReflectorModule.h"
-#include "QTSSOnDemandRelayModule.h"
+#include "EasyRelayModule.h"
+#include "EasyHLSModule.h"
 #ifdef PROXYSERVER
 #include "QTSSProxyModule.h"
 #endif
@@ -76,12 +77,13 @@
 #include "QTSSWebDebugModule.h"
 #endif
 
-
-
 #include "RTSPRequestInterface.h"
 #include "RTSPSessionInterface.h"
 #include "RTPSessionInterface.h"
 #include "RTSPSession.h"
+
+#include "HTTPSession.h"
+
 #include "RTPStream.h"
 #include "RTCPTask.h"
 #include "QTSSFile.h"
@@ -97,6 +99,21 @@ class RTSPListenerSocket : public TCPListenerSocket
     
         RTSPListenerSocket() {}
         virtual ~RTSPListenerSocket() {}
+        
+        //sole job of this object is to implement this function
+        virtual Task*   GetSessionTask(TCPSocket** outSocket);
+        
+        //check whether the Listener should be idling
+        Bool16 OverMaxConnections(UInt32 buffer);
+
+};
+
+class HTTPListenerSocket : public TCPListenerSocket
+{
+    public:
+    
+        HTTPListenerSocket() {}
+        virtual ~HTTPListenerSocket() {}
         
         //sole job of this object is to implement this function
         virtual Task*   GetSessionTask(TCPSocket** outSocket);
@@ -153,6 +170,9 @@ QTSServer::~QTSServer()
     OSThread::SetMainThreadData(NULL);
 
     delete fRTPMap;
+	delete fHLSMap;
+	delete fReflectorSessionMap;
+
     delete fSocketPool;
     delete fSrvrMessages;
     delete locker;
@@ -160,12 +180,16 @@ QTSServer::~QTSServer()
     delete fSrvrPrefs;
 }
 
-Bool16 QTSServer::Initialize(XMLPrefsParser* inPrefsSource, PrefsSource* inMessagesSource, UInt16 inPortOverride, Bool16 createListeners)
+Bool16 QTSServer::Initialize(XMLPrefsParser* inPrefsSource, PrefsSource* inMessagesSource, UInt16 inPortOverride, Bool16 createListeners,const char*inAbsolutePath)
 {
-    static const UInt32 kRTPSessionMapSize = 577;
+    static const UInt32 kRTPSessionMapSize = 5000;
+	static const UInt32 kHLSSessionMapSize = 5000;
+	static const UInt32 kReflectorSessionMapSize = 5000;
     fServerState = qtssFatalErrorState;
     sPrefsSource = inPrefsSource;
     sMessagesSource = inMessagesSource;
+	memset(sAbsolutePath,0,MAX_PATH);
+	strcpy(sAbsolutePath,inAbsolutePath);
     this->InitCallbacks();
 
     //
@@ -175,6 +199,8 @@ Bool16 QTSServer::Initialize(XMLPrefsParser* inPrefsSource, PrefsSource* inMessa
     QTSServerPrefs::Initialize();
     QTSSMessages::Initialize();
     RTSPRequestInterface::Initialize();
+	HTTPSessionInterface::Initialize();
+
     RTSPSessionInterface::Initialize();
     RTPSessionInterface::Initialize();
     RTPStream::Initialize();
@@ -210,6 +236,8 @@ Bool16 QTSServer::Initialize(XMLPrefsParser* inPrefsSource, PrefsSource* inMessa
     // CREATE GLOBAL OBJECTS
     fSocketPool = new RTPSocketPool();
     fRTPMap = new OSRefTable(kRTPSessionMapSize);
+	fHLSMap = new OSRefTable(kHLSSessionMapSize);
+	fReflectorSessionMap = new OSRefTable(kReflectorSessionMapSize);
 
     //
     // Load ERROR LOG module only. This is good in case there is a startup error.
@@ -347,7 +375,13 @@ Bool16 QTSServer::SetDefaultIPAddr()
     return true;
 }               
 
-
+/*
+*
+*	DESCRIBE:	Add HTTP Port Listening,Total Port Listening=RTSP Port listening + HTTP Port Listening
+*	Author:		Babosa@easydarwin.org
+*	Date:		2015/11/22
+*
+*/
 Bool16 QTSServer::CreateListeners(Bool16 startListeningNow, QTSServerPrefs* inPrefs, UInt16 inPortOverride)
 {
     struct PortTracking
@@ -359,30 +393,34 @@ Bool16 QTSServer::CreateListeners(Bool16 startListeningNow, QTSServerPrefs* inPr
         Bool16 fNeedsCreating;
     };
     
-    PortTracking* thePortTrackers = NULL;   
-    UInt32 theTotalPortTrackers = 0;
+    PortTracking* theRTSPPortTrackers = NULL;   
+    UInt32 theTotalRTSPPortTrackers = 0;
+
+    PortTracking* theHTTPPortTrackers = NULL;   
+    UInt32 theTotalHTTPPortTrackers = 0;
     
     // Get the IP addresses from the pref
     UInt32 theNumAddrs = 0;
     UInt32* theIPAddrs = this->GetRTSPIPAddrs(inPrefs, &theNumAddrs);   
     UInt32 index = 0;
     
+	// Stat Total Num of RTSP Port
     if ( inPortOverride != 0)
     {
-        theTotalPortTrackers = theNumAddrs; // one port tracking struct for each IP addr
-        thePortTrackers = NEW PortTracking[theTotalPortTrackers];
+        theTotalRTSPPortTrackers = theNumAddrs; // one port tracking struct for each IP addr
+        theRTSPPortTrackers = NEW PortTracking[theTotalRTSPPortTrackers];
         for (index = 0; index < theNumAddrs; index++)
         {
-            thePortTrackers[index].fPort = inPortOverride;
-            thePortTrackers[index].fIPAddr = theIPAddrs[index];
+            theRTSPPortTrackers[index].fPort = inPortOverride;
+            theRTSPPortTrackers[index].fIPAddr = theIPAddrs[index];
         }
     }
     else
     {
         UInt32 theNumPorts = 0;
         UInt16* thePorts = GetRTSPPorts(inPrefs, &theNumPorts);
-        theTotalPortTrackers = theNumAddrs * theNumPorts;
-        thePortTrackers = NEW PortTracking[theTotalPortTrackers];
+        theTotalRTSPPortTrackers = theNumAddrs * theNumPorts;
+        theRTSPPortTrackers = NEW PortTracking[theTotalRTSPPortTrackers];
         
         UInt32 currentIndex  = 0;
         
@@ -392,48 +430,79 @@ Bool16 QTSServer::CreateListeners(Bool16 startListeningNow, QTSServerPrefs* inPr
             {
                 currentIndex = (theNumPorts * index) + portIndex;
                 
-                thePortTrackers[currentIndex].fPort = thePorts[portIndex];
-                thePortTrackers[currentIndex].fIPAddr = theIPAddrs[index];
+                theRTSPPortTrackers[currentIndex].fPort = thePorts[portIndex];
+                theRTSPPortTrackers[currentIndex].fIPAddr = theIPAddrs[index];
             }
         }
                 
-                delete [] thePorts;
+		delete [] thePorts;
     }
+
+	// Stat Total Num of HTTP Port
+	{
+		theTotalHTTPPortTrackers = theNumAddrs;
+		theHTTPPortTrackers = NEW PortTracking[theTotalHTTPPortTrackers];
+
+		UInt16 theHTTPPort = inPrefs->GetHTTPServicePort();
+		UInt32 currentIndex  = 0;
+
+		for (index = 0; index < theNumAddrs; index++)
+		{
+			theHTTPPortTrackers[index].fPort = theHTTPPort;
+			theHTTPPortTrackers[index].fIPAddr = theIPAddrs[index];
+		}
+	}
     
         delete [] theIPAddrs;
     //
     // Now figure out which of these ports we are *already* listening on.
     // If we already are listening on that port, just move the pointer to the
     // listener over to the new array
-    TCPListenerSocket** newListenerArray = NEW TCPListenerSocket*[theTotalPortTrackers];
+    TCPListenerSocket** newListenerArray = NEW TCPListenerSocket*[theTotalRTSPPortTrackers + theTotalHTTPPortTrackers];
     UInt32 curPortIndex = 0;
     
-    for (UInt32 count = 0; count < theTotalPortTrackers; count++)
+	// RTSPPortTrackers check
+    for (UInt32 count = 0; count < theTotalRTSPPortTrackers; count++)
     {
         for (UInt32 count2 = 0; count2 < fNumListeners; count2++)
         {
-            if ((fListeners[count2]->GetLocalPort() == thePortTrackers[count].fPort) &&
-                (fListeners[count2]->GetLocalAddr() == thePortTrackers[count].fIPAddr))
+            if ((fListeners[count2]->GetLocalPort() == theRTSPPortTrackers[count].fPort) &&
+                (fListeners[count2]->GetLocalAddr() == theRTSPPortTrackers[count].fIPAddr))
             {
-                thePortTrackers[count].fNeedsCreating = false;
+                theRTSPPortTrackers[count].fNeedsCreating = false;
                 newListenerArray[curPortIndex++] = fListeners[count2];
-                Assert(curPortIndex <= theTotalPortTrackers);
+                Assert(curPortIndex <= theTotalRTSPPortTrackers);
                 break;
             }
         }
     }
-    
-    //
-    // Create any new listeners we need
-    for (UInt32 count3 = 0; count3 < theTotalPortTrackers; count3++)
+
+	// HTTPPortTrackers check
+	for (UInt32 count = 0; count < theTotalHTTPPortTrackers; count++)
+	{
+		for (UInt32 count2 = 0; count2 < fNumListeners; count2++)
+		{
+			if ((fListeners[count2]->GetLocalPort() == theHTTPPortTrackers[count].fPort) &&
+				(fListeners[count2]->GetLocalAddr() == theHTTPPortTrackers[count].fIPAddr))
+			{
+				theHTTPPortTrackers[count].fNeedsCreating = false;
+				newListenerArray[curPortIndex++] = fListeners[count2];
+				Assert(curPortIndex <= theTotalRTSPPortTrackers+theTotalHTTPPortTrackers);
+				break;
+			}
+		}
+	}
+
+    // Create any new <RTSP> listeners we need
+    for (UInt32 count3 = 0; count3 < theTotalRTSPPortTrackers; count3++)
     {
-        if (thePortTrackers[count3].fNeedsCreating)
+        if (theRTSPPortTrackers[count3].fNeedsCreating)
         {
             newListenerArray[curPortIndex] = NEW RTSPListenerSocket();
-            QTSS_Error err = newListenerArray[curPortIndex]->Initialize(thePortTrackers[count3].fIPAddr, thePortTrackers[count3].fPort);
+            QTSS_Error err = newListenerArray[curPortIndex]->Initialize(theRTSPPortTrackers[count3].fIPAddr, theRTSPPortTrackers[count3].fPort);
 
             char thePortStr[20];
-            qtss_sprintf(thePortStr, "%hu", thePortTrackers[count3].fPort);
+            qtss_sprintf(thePortStr, "%hu", theRTSPPortTrackers[count3].fPort);
             
             //
             // If there was an error creating this listener, destroy it and log an error
@@ -457,6 +526,39 @@ Bool16 QTSServer::CreateListeners(Bool16 startListeningNow, QTSServerPrefs* inPr
         }
     }
     
+    // Create any new <HTTP> listeners we need
+    for (UInt32 count3 = 0; count3 < theTotalHTTPPortTrackers; count3++)
+    {
+        if (theHTTPPortTrackers[count3].fNeedsCreating)
+        {
+            newListenerArray[curPortIndex] = NEW HTTPListenerSocket();
+            QTSS_Error err = newListenerArray[curPortIndex]->Initialize(theHTTPPortTrackers[count3].fIPAddr, theHTTPPortTrackers[count3].fPort);
+
+            char thePortStr[20];
+            qtss_sprintf(thePortStr, "%hu", theHTTPPortTrackers[count3].fPort);
+            
+            //
+            // If there was an error creating this listener, destroy it and log an error
+            if ((startListeningNow) && (err != QTSS_NoErr))
+                delete newListenerArray[curPortIndex];
+
+            if (err == EADDRINUSE)
+                QTSSModuleUtils::LogError(qtssWarningVerbosity, qtssListenPortInUse, 0, thePortStr);
+            else if (err == EACCES)
+                QTSSModuleUtils::LogError(qtssWarningVerbosity, qtssListenPortAccessDenied, 0, thePortStr);
+            else if (err != QTSS_NoErr)
+                QTSSModuleUtils::LogError(qtssWarningVerbosity, qtssListenPortError, 0, thePortStr);
+            else
+            {
+                //
+                // This listener was successfully created.
+                if (startListeningNow)
+                    newListenerArray[curPortIndex]->RequestEvent(EV_RE);
+                curPortIndex++;
+            }
+        }
+    }
+
     //
     // Kill any listeners that we no longer need
     for (UInt32 count4 = 0; count4 < fNumListeners; count4++)
@@ -490,7 +592,8 @@ Bool16 QTSServer::CreateListeners(Bool16 startListeningNow, QTSServerPrefs* inPr
     }
     this->SetNumValues(qtssSvrRTSPPorts, portIndex);
 
-    delete [] thePortTrackers;
+    delete [] theRTSPPortTrackers;
+	delete [] theHTTPPortTrackers;
     return (fNumListeners > 0);
 }
 
@@ -658,9 +761,13 @@ void    QTSServer::LoadCompiledInModules()
     (void)theReflectorModule->SetupModule(&sCallbacks, &QTSSReflectorModule_Main);
     (void)AddModule(theReflectorModule);
 
-	QTSSModule* theOnDemandRelayModule = new QTSSModule("QTSSOnDemandRelayModule");
-    (void)theOnDemandRelayModule->SetupModule(&sCallbacks, &QTSSOnDemandRelayModule_Main);
+	QTSSModule* theOnDemandRelayModule = new QTSSModule("EasyRelayModule");
+    (void)theOnDemandRelayModule->SetupModule(&sCallbacks, &EasyRelayModule_Main);
     (void)AddModule(theOnDemandRelayModule);
+
+	QTSSModule* theHLSModule = new QTSSModule("EasyHLSModule");
+    (void)theHLSModule->SetupModule(&sCallbacks, &EasyHLSModule_Main);
+    (void)AddModule(theHLSModule);
 
 	//we not used QTSSRelayModule
 	/*
@@ -726,7 +833,7 @@ void    QTSServer::InitCallbacks()
     sCallbacks.addr[kConvertToUnixTimeCallback] =   (QTSS_CallbackProcPtr)QTSSCallbacks::QTSS_ConvertToUnixTime;
 
     sCallbacks.addr[kAddRoleCallback] =             (QTSS_CallbackProcPtr)QTSSCallbacks::QTSS_AddRole;
-    sCallbacks.addr[kCreateObjectTypeCallback] =        (QTSS_CallbackProcPtr)QTSSCallbacks::QTSS_CreateObjectType;
+    sCallbacks.addr[kCreateObjectTypeCallback] =	(QTSS_CallbackProcPtr)QTSSCallbacks::QTSS_CreateObjectType;
     sCallbacks.addr[kAddAttributeCallback] =        (QTSS_CallbackProcPtr)QTSSCallbacks::QTSS_AddAttribute;
     sCallbacks.addr[kIDForTagCallback] =            (QTSS_CallbackProcPtr)QTSSCallbacks::QTSS_IDForAttr;
     sCallbacks.addr[kGetAttributePtrByIDCallback] = (QTSS_CallbackProcPtr)QTSSCallbacks::QTSS_GetValuePtr;
@@ -799,8 +906,11 @@ void    QTSServer::InitCallbacks()
     
     sCallbacks.addr[kLockStdLibCallback] =                  (QTSS_CallbackProcPtr)QTSSCallbacks::QTSS_LockStdLib;
     sCallbacks.addr[kUnlockStdLibCallback] =                (QTSS_CallbackProcPtr)QTSSCallbacks::QTSS_UnlockStdLib;
-	sCallbacks.addr[kReflectRTPCallback] =					(QTSS_CallbackProcPtr)QTSSCallbacks::QTSS_ReflectRTPTrackData;
-	
+
+	sCallbacks.addr[kStartHLSessionCallback] =				(QTSS_CallbackProcPtr)QTSSCallbacks::Easy_StartHLSession;
+	sCallbacks.addr[kStopHLSessionCallback] =				(QTSS_CallbackProcPtr)QTSSCallbacks::Easy_StopHLSession;
+	sCallbacks.addr[kGetHLSessionsCallback] =				(QTSS_CallbackProcPtr)QTSSCallbacks::Easy_GetHLSessions;
+	sCallbacks.addr[kGetRTSPPushSessionsCallback] =				(QTSS_CallbackProcPtr)QTSSCallbacks::Easy_GetRTSPPushSessions;
 }
 
 void QTSServer::LoadModules(QTSServerPrefs* inPrefs)
@@ -921,7 +1031,16 @@ Bool16 QTSServer::AddModule(QTSSModule* inModule)
     
     // If the module returns an error from the QTSS_Register role, don't put it anywhere
     if (inModule->CallDispatch(QTSS_Register_Role, &theRegParams) != QTSS_NoErr)
+	{
+		//Log 
+		char msgStr[2048];
+		char* moduleName = NULL;
+		(void)inModule->GetValueAsString (qtssModName, 0, &moduleName);
+		qtss_snprintf(msgStr, sizeof(msgStr), "Loading Module [%s] Failed!", moduleName);
+		delete moduleName;
+		QTSServerInterface::LogError(qtssMessageVerbosity, msgStr);
         return false;
+	}
         
     OSThread::SetMainThreadData(NULL);
     
@@ -1106,6 +1225,43 @@ Task*   RTSPListenerSocket::GetSessionTask(TCPSocket** outSocket)
 
 
 Bool16 RTSPListenerSocket::OverMaxConnections(UInt32 buffer)
+{
+    QTSServerInterface* theServer = QTSServerInterface::GetServer();
+    SInt32 maxConns = theServer->GetPrefs()->GetMaxConnections();
+    Bool16 overLimit = false;
+    
+    if (maxConns > -1) // limit connections
+    { 
+        maxConns += buffer;
+        if  ( (theServer->GetNumRTPSessions() > (UInt32) maxConns) 
+              ||
+              ( theServer->GetNumRTSPSessions() + theServer->GetNumRTSPHTTPSessions() > (UInt32) maxConns ) 
+            )
+        {
+            overLimit = true;          
+        }
+    } 
+    return overLimit;
+     
+}
+
+Task*   HTTPListenerSocket::GetSessionTask(TCPSocket** outSocket)
+{
+    Assert(outSocket != NULL);
+        
+    HTTPSession* theTask = NEW HTTPSession();
+    *outSocket = theTask->GetSocket();  // out socket is not attached to a unix socket yet.
+
+    if (this->OverMaxConnections(0))
+        this->SlowDown();
+    else
+        this->RunNormal();
+        
+    return theTask;
+}
+
+
+Bool16 HTTPListenerSocket::OverMaxConnections(UInt32 buffer)
 {
     QTSServerInterface* theServer = QTSServerInterface::GetServer();
     SInt32 maxConns = theServer->GetPrefs()->GetMaxConnections();

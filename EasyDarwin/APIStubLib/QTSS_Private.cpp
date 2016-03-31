@@ -235,8 +235,6 @@ QTSS_Error  QTSS_Advise(QTSS_StreamRef inRef, UInt64 inPosition, UInt32 inAdvise
     return (sCallbacks->addr [kAdviseCallback]) (inRef, inPosition, inAdviseSize);      
 }
 
-
-
 // SERVICE ROUTINES
 
 QTSS_Error QTSS_AddService(const char* inServiceName, QTSS_ServiceFunctionPtr inFunctionPtr)
@@ -297,7 +295,6 @@ QTSS_Error QTSS_RefreshTimeOut(QTSS_ClientSessionObject inClientSession)
 {
     return (sCallbacks->addr [kRefreshTimeOutCallback]) (inClientSession);
 }
-
 
 // FILE SYSTEM ROUTINES
 
@@ -389,11 +386,6 @@ QTSS_Error	QTSS_Authorize(QTSS_RTSPRequestObject inAuthRequestObject, char** out
     return (sCallbacks->addr [kAuthorizeCallback]) (inAuthRequestObject, outAuthRealm, outAuthUserAllowed);
 }
 
-QTSS_Error	QTSS_ReflectRTPData(QTSS_Object inObject, const char* inData, UInt32 inDataLen, UInt32 inTrackID)
-{
-	return (sCallbacks->addr [kReflectRTPCallback]) (inObject, inData, inDataLen, inTrackID);
-}
-
 void  QTSS_LockStdLib()
 {
    (sCallbacks->addr [kLockStdLibCallback])  ();
@@ -402,5 +394,25 @@ void  QTSS_LockStdLib()
 void  QTSS_UnlockStdLib()
 {
     (sCallbacks->addr [kUnlockStdLibCallback])  ();
+}
+
+QTSS_Error	Easy_StartHLSession(const char* inSessionName, const char* inURL, UInt32 inTimeout, char* outURL)
+{
+	return (sCallbacks->addr [kStartHLSessionCallback]) (inSessionName, inURL, inTimeout, outURL);
+}
+
+QTSS_Error	Easy_StopHLSession(const char* inSessionName)
+{
+	return (sCallbacks->addr [kStopHLSessionCallback]) (inSessionName);
+}
+
+void* Easy_GetHLSessions()
+{
+	return (void *) ((QTSS_CallbackPtrProcPtr) sCallbacks->addr [kGetHLSessionsCallback]) ();
+}
+
+void* Easy_GetRTSPPushSessions()
+{
+	return (void *) ((QTSS_CallbackPtrProcPtr) sCallbacks->addr [kGetRTSPPushSessionsCallback]) ();
 }
 

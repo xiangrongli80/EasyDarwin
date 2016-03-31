@@ -208,15 +208,29 @@ int main(int argc, char * argv[])
 {
     extern char* optarg;
     
-    
-
+    //Get Absolute Path
+	char sAbsolutePath[MAX_PATH];
+	int cnt = readlink("/proc/self/exe", sAbsolutePath, MAX_PATH);
+	if (cnt < 0 || cnt >= MAX_PATH)
+	{
+		printf("***Error***\n");
+		exit(-1);
+	}
+	for (int i = cnt; i >=0; --i)
+	{
+		if (sAbsolutePath[i] == '/')
+		{
+			sAbsolutePath[i+1] = '\0';
+			break;
+		}
+	}
     // on write, don't send signal for SIGPIPE, just set errno to EPIPE
     // and return -1
     //signal is a deprecated and potentially dangerous function
     //(void) ::signal(SIGPIPE, SIG_IGN);
     struct sigaction act;
     
-#if defined(sun) || defined(i386) || defined(__x86_64__) || defined (__MacOSX__) || defined(__powerpc__) || defined (__osf__) || defined (__sgi_cc__) || defined (__hpux__)
+#if defined(sun) || defined(i386) || defined(__x86_64__) || defined (__MacOSX__) || defined(__powerpc__) || defined (__osf__) || defined (__sgi_cc__) || defined (__hpux__) || defined (__linux__)
     sigemptyset(&act.sa_mask);
     act.sa_flags = 0;
     act.sa_handler = (void(*)(int))&sigcatcher;
@@ -301,8 +315,8 @@ int main(int argc, char * argv[])
     Bool16 theXMLPrefsExist = true;
     UInt32 debugLevel = 0;
     UInt32 debugOptions = kRunServerDebug_Off;
-	static char* sDefaultConfigFilePath = DEFAULTPATHS_ETC_DIR_OLD "streamingserver.conf";
-	static char* sDefaultXMLFilePath = DEFAULTPATHS_ETC_DIR "streamingserver.xml";
+	static char* sDefaultConfigFilePath = DEFAULTPATHS_ETC_DIR_OLD "easydarwin.conf";
+	static char* sDefaultXMLFilePath = DEFAULTPATHS_ETC_DIR "easydarwin.xml";
 
     char* theConfigFilePath = sDefaultConfigFilePath;
     char* theXMLFilePath = sDefaultXMLFilePath;
@@ -335,7 +349,7 @@ int main(int argc, char * argv[])
                                 
                 break;
             case 'f':
-				theXMLFilePath  = DEFAULTPATHS_ETC_DIR "streamingserver.xml";
+				theXMLFilePath  = DEFAULTPATHS_ETC_DIR "easydarwin.xml";
                 break;
             case 'p':
                 Assert(optarg != NULL);// this means we didn't declare getopt options correctly or there is a bug in getopt.
@@ -578,7 +592,7 @@ int main(int argc, char * argv[])
 #endif
 
     //This function starts, runs, and shuts down the server
-    if (::StartServer(&theXMLParser, &theMessagesSource, thePort, statsUpdateInterval, theInitialState, dontFork, debugLevel, debugOptions) != qtssFatalErrorState)
+    if (::StartServer(&theXMLParser, &theMessagesSource, thePort, statsUpdateInterval, theInitialState, dontFork, debugLevel, debugOptions,sAbsolutePath) != qtssFatalErrorState)
     {    ::RunServer();
          CleanPid(false);
          exit (EXIT_SUCCESS);

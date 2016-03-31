@@ -24,10 +24,7 @@
  */
 /*
     File:       win32main.cpp
-
     Contains:   main function to drive streaming server on win32.
-
-
 */
 
 #include "getopt.h"
@@ -37,7 +34,6 @@
 #include "QTSServer.h"
 #include "QTSSExpirationDate.h"
 #include "GenerateXMLPrefs.h"
-
 //
 // Data
 static FilePrefsSource sPrefsSource(true); // Allow dups
@@ -60,8 +56,10 @@ void WINAPI ServiceMain(DWORD argc, LPTSTR *argv);
 
 int main(int argc, char * argv[]) 
 {
+	
     extern char* optarg;
-    
+    char sAbsolutePath[MAX_PATH];
+	GetCurrentDirectory(MAX_PATH,sAbsolutePath); 
     //First thing to do is to read command-line arguments.
     int ch;
     
@@ -74,8 +72,18 @@ int main(int argc, char * argv[])
 #if _DEBUG
     char* compileType = "Compile_Flags/_DEBUG; ";
 #else
-   char* compileType = "";
+   char* compileType = "Compile_Flags/_RELEASE;";
 #endif
+
+   	qtss_printf("%s/%s ( Build/%s; Platform/%s; %s%s) Built on: %s\n",
+										QTSServerInterface::GetServerName().Ptr,
+                                        QTSServerInterface::GetServerVersion().Ptr,
+                                        QTSServerInterface::GetServerBuild().Ptr,
+                                        QTSServerInterface::GetServerPlatform().Ptr,
+                                        compileType,
+                                        QTSServerInterface::GetServerComment().Ptr,
+                                        QTSServerInterface::GetServerBuildDate().Ptr);
+
 
     while ((ch = getopt(argc,argv, "vdxp:o:c:irsS:I")) != EOF) // opt: means requires option
     {
@@ -97,9 +105,9 @@ int main(int argc, char * argv[])
                 qtss_printf("-c c:\\myconfigpath.xml: Specify a config file path\n");
                 qtss_printf("-o c:\\myconfigpath.conf: Specify a DSS 1.x / 2.x config file path\n");
                 qtss_printf("-x: Force create new .xml config file from 1.x / 2.x config\n");
-                qtss_printf("-i: Install the Darwin Streaming Server service\n");
-                qtss_printf("-r: Remove the Darwin Streaming Server service\n");
-                qtss_printf("-s: Start the Darwin Streaming Server service\n");
+                qtss_printf("-i: Install the EasyDarwin service\n");
+                qtss_printf("-r: Remove the EasyDarwin service\n");
+                qtss_printf("-s: Start the EasyDarwin service\n");
                 qtss_printf("-S n: Display server stats in the console every \"n\" seconds\n");
                 qtss_printf("-I: Start the server in the idle state\n");
                 ::exit(0);  
@@ -126,19 +134,19 @@ int main(int argc, char * argv[])
                 theXMLPrefsExist = false; // Force us to generate a new XML prefs file
                 break;
             case 'i':
-                qtss_printf("Installing the Darwin Streaming Server service...\n");
-                ::InstallService("Darwin Streaming Server");
-                qtss_printf("Starting the Darwin Streaming Server service...\n");
-                ::RunAsService("Darwin Streaming Server");
+                qtss_printf("Installing the EasyDarwin service...\n");
+                ::InstallService("EasyDarwin");
+                qtss_printf("Starting the EasyDarwin service...\n");
+                ::RunAsService("EasyDarwin");
                 ::exit(0);
                 break;
             case 'r':
-                qtss_printf("Removing the Darwin Streaming Server service...\n");
-                ::RemoveService("Darwin Streaming Server");
+                qtss_printf("Removing the EasyDarwin service...\n");
+                ::RemoveService("EasyDarwin");
                 ::exit(0);
             case 's':
-                qtss_printf("Starting the Darwin Streaming Server service...\n");
-                ::RunAsService("Darwin Streaming Server");
+                qtss_printf("Starting the EasyDarwin service...\n");
+                ::RunAsService("EasyDarwin");
                 ::exit(0);
             case 'I':
                 sInitialState = qtssIdleState;
@@ -223,7 +231,7 @@ int main(int argc, char * argv[])
     if (notAService)
     {
         // If we're running off the command-line, don't do the service initiation crap.
-        ::StartServer(sXMLParser, &sMessagesSource, sPort, sStatsUpdateInterval, sInitialState, false,0, kRunServerDebug_Off); // No stats update interval for now
+        ::StartServer(sXMLParser, &sMessagesSource, sPort, sStatsUpdateInterval, sInitialState, false,0, kRunServerDebug_Off,sAbsolutePath); // No stats update interval for now
         ::RunServer();
         ::exit(0);
     }
@@ -236,9 +244,9 @@ int main(int argc, char * argv[])
 
     //
     // In case someone runs the server improperly, print out a friendly message.
-    qtss_printf("Darwin Streaming Server must either be started from the DOS Console\n");
+    qtss_printf("EasyDarwin must either be started from the DOS Console\n");
     qtss_printf("using the -d command-line option, or using the Service Control Manager\n\n");
-    qtss_printf("Waiting for the Service Control Manager to start Darwin Streaming Server...\n");
+    qtss_printf("Waiting for the Service Control Manager to start EasyDarwin...\n");
     BOOL theErr = ::StartServiceCtrlDispatcher(dispatchTable);
     if (!theErr)
     {
@@ -248,12 +256,47 @@ int main(int argc, char * argv[])
 
     return (0);
 }
-    
-    
+#if 0
+bool GetWindowsServiceInstallPath(char* inPath)
+{
+	HKEY hKEY;
+	if(RegOpenKey(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\EasyDarwin", &hKEY)==ERROR_SUCCESS)
+	{
+		DWORD dwType;
+		DWORD cchData;
+		dwType = REG_EXPAND_SZ;
+		char szName[MAX_PATH];
+		cchData = sizeof(szName);
+		if (RegQueryValueEx(hKEY, "ImagePath", NULL, &dwType, (LPBYTE)szName, &cchData)==ERROR_SUCCESS)
+		{
+			char* p=strstr(szName,"EasyDarwin.exe");
+			if(p!=NULL)
+			{
+				int len=p-szName;
+				memcpy(inPath,szName,p-szName);
+				inPath[len]='\0';	
+				return 1;
+			}
+		}
+		RegCloseKey(hKEY);
+	}
+	return 0;
+}
+#endif
 void __stdcall ServiceMain(DWORD /*argc*/, LPTSTR *argv)
 {
     char* theServerName = argv[0];
-
+	char sAbsolutePath[MAX_PATH];
+	:: GetModuleFileName(NULL, sAbsolutePath, MAX_PATH);
+	int cnt=strlen(sAbsolutePath);
+	for (int i = cnt; i >=0; --i)
+	{
+		if (sAbsolutePath[i] == '\\')
+		{
+			sAbsolutePath[i+1] = '\0';
+			break;
+		}
+	}
     sServiceStatusHandle = ::RegisterServiceCtrlHandler( theServerName, &ServiceControl );
     if (sServiceStatusHandle == 0)
     {
@@ -268,7 +311,7 @@ void __stdcall ServiceMain(DWORD /*argc*/, LPTSTR *argv)
 
     //
     // Start & Run the server - no stats update interval for now
-    if (::StartServer(sXMLParser, &sMessagesSource, sPort, sStatsUpdateInterval, sInitialState, false,0, kRunServerDebug_Off) != qtssFatalErrorState)
+    if (::StartServer(sXMLParser, &sMessagesSource, sPort, sStatsUpdateInterval, sInitialState, false,0, kRunServerDebug_Off,sAbsolutePath) != qtssFatalErrorState)
     {
         ::ReportStatus( SERVICE_RUNNING, NO_ERROR );
         ::RunServer(); // This function won't return until the server has died
@@ -458,7 +501,7 @@ void InstallService(char* inServiceName)
                         );
     if (!theSCManager)
     {
-        qtss_printf("Failed to install Darwin Streaming Server Service\n");
+        qtss_printf("Failed to install EasyDarwin Service\n");
         return;
     }
 
@@ -480,10 +523,10 @@ void InstallService(char* inServiceName)
     if (theService)
     {
         ::CloseServiceHandle(theService);
-        qtss_printf("Installed Darwin Streaming Server Service\n");
+        qtss_printf("Installed EasyDarwin Service\n");
     }
     else
-        qtss_printf("Failed to install Darwin Streaming Server Service\n");
+        qtss_printf("Failed to install EasyDarwin Service\n");
 
     ::CloseServiceHandle(theSCManager);
 }
@@ -500,7 +543,7 @@ void RemoveService(char *inServiceName)
                         );
     if (!theSCManager)
     {
-        qtss_printf("Failed to remove Darwin Streaming Server Service\n");
+        qtss_printf("Failed to remove EasyDarwin Service\n");
         return;
     }
 
@@ -513,10 +556,10 @@ void RemoveService(char *inServiceName)
 
         (void)::DeleteService(theService);
         ::CloseServiceHandle(theService);
-        qtss_printf("Removed Darwin Streaming Server Service\n");
+        qtss_printf("Removed EasyDarwin Service\n");
     }
     else
-        qtss_printf("Failed to remove Darwin Streaming Server Service\n");
+        qtss_printf("Failed to remove EasyDarwin Service\n");
 
     ::CloseServiceHandle(theSCManager);
 }

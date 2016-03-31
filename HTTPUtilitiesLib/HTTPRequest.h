@@ -40,7 +40,7 @@ public:
     HTTPRequest(StrPtrLen* serverHeader, StrPtrLen* requestPtr);
     
     //HTTP响应构造函数
-    HTTPRequest(StrPtrLen* serverHeader); 
+    HTTPRequest(StrPtrLen* serverHeader, HTTPType httpType = httpRequestType); 
     
     // Destructor
     virtual ~HTTPRequest();
@@ -61,6 +61,7 @@ public:
     StrPtrLen*              GetHostfromAbsoluteURI(){ return &fHostHeader; }
     StrPtrLen*              GetRequestRelativeURI(){ return &fRelativeURI; }
     char*                   GetRequestPath(){ return fRequestPath; }
+	char*					GetQueryString(){ return fQueryString; }
     HTTPVersion             GetVersion(){ return fVersion; }
     HTTPStatusCode          GetStatusCode(){ return fStatusCode; }
     Bool16                  IsRequestKeepAlive(){ return fRequestKeepAlive; }
@@ -70,7 +71,9 @@ public:
     StrPtrLen*              GetHeaderValue(HTTPHeader inHeader);
   
     // Creates a header with the corresponding version and status code
-    void                    CreateResponseHeader(HTTPStatusCode statusCode = httpOK, HTTPVersion version = http11Version);
+    Bool16                  CreateResponseHeader(HTTPStatusCode statusCode = httpOK, HTTPVersion version = http11Version);
+	// Creates a header with the
+	Bool16					CreateRequestHeader(HTTPMethod method = httpPostMethod, HTTPVersion version = http11Version);
   
     // To append response header fields as appropriate
     void                    AppendResponseHeader(HTTPHeader inHeader, StrPtrLen* inValue);
@@ -83,7 +86,7 @@ public:
 
     // Returns the completed response header by appending CRLF to the end of the header
     // fields buffer
-    StrPtrLen*              GetCompleteResponseHeader();
+    StrPtrLen*              GetCompleteHTTPHeader();
     
     // Parse if-modified-since header
     time_t                  ParseIfModSinceHeader();
@@ -103,13 +106,15 @@ private:
     void                    SetKeepAlive(StrPtrLen* keepAliveValue);
     // Used in initialize and CreateResponseHeader
     void                    PutStatusLine(StringFormatter* putStream, HTTPStatusCode status, HTTPVersion version);
+	// Used in initialize and CreateRequestHeader
+	void					PutMethedLine(StringFormatter* putStream, HTTPMethod method, HTTPVersion version);
     //For writing into the premade headers
     StrPtrLen*              GetServerHeader(){ return &fSvrHeader; }
   
     // Complete request and response headers
     StrPtrLen                       fRequestHeader;
-    ResizeableStringFormatter*      fResponseFormatter;
-    StrPtrLen*                      fResponseHeader;
+    ResizeableStringFormatter*      fHTTPHeaderFormatter;
+    StrPtrLen*                      fHTTPHeader;
   
     // Private members
     HTTPMethod          fMethod;
@@ -129,6 +134,7 @@ private:
     StrPtrLen           fAbsoluteURIScheme;
     StrPtrLen           fHostHeader;        // If the full url is given in the request line
     char*               fRequestPath;       // Also contains the query string
+	char*				fQueryString;
       
     HTTPStatusCode      fStatusCode;
     Bool16              fRequestKeepAlive;              // Keep-alive information in the client request

@@ -55,8 +55,7 @@ static QTSS_AttributeID         sCantBindReflectorSocketErr = qtssIllegalAttrID;
 static QTSS_AttributeID         sCantJoinMulticastGroupErr  = qtssIllegalAttrID;
 
 // PREFS
-
-static UInt32                   sDefaultOverBufferInSec             = 10; 
+static UInt32                   sDefaultOverBufferInSec             = 1; 
 static UInt32                   sDefaultBucketDelayInMsec           = 73;
 static Bool16                   sDefaultUsePacketReceiveTime        = false; 
 static UInt32                   sDefaultMaxFuturePacketTimeSec      = 60;
@@ -65,7 +64,7 @@ static UInt32                   sDefaultFirstPacketOffsetMsec       = 500;
 UInt32                          ReflectorStream::sBucketSize  = 16;
 UInt32                          ReflectorStream::sOverBufferInMsec = 10000; // more or less what the client over buffer will be
 UInt32                          ReflectorStream::sMaxFuturePacketMSec = 60000; // max packet future time
-UInt32                          ReflectorStream::sMaxPacketAgeMSec = 10000;
+UInt32                          ReflectorStream::sMaxPacketAgeMSec = 20000;
 
 UInt32                          ReflectorStream::sMaxFuturePacketSec = 60; // max packet future time
 UInt32                          ReflectorStream::sOverBufferInSec = 10;
@@ -108,7 +107,9 @@ void ReflectorStream::Initialize(QTSS_ModulePrefsObject inPrefs)
 
     ReflectorStream::sOverBufferInMsec = sOverBufferInSec * 1000;
     ReflectorStream::sMaxFuturePacketMSec = sMaxFuturePacketSec * 1000;
-    ReflectorStream::sMaxPacketAgeMSec = (UInt32) (sOverBufferInMsec * 2.0); //allow a little time before deleting.
+    ReflectorStream::sMaxPacketAgeMSec = (UInt32) (sOverBufferInMsec * 10.0); //allow a little time before deleting.
+	if(ReflectorStream::sMaxPacketAgeMSec == 0)
+		ReflectorStream::sMaxPacketAgeMSec = 10000;
     ReflectorStream::sRelocatePacketAgeMSec = (UInt32) (sOverBufferInMsec * 1.3); 
 }
 
@@ -201,6 +202,9 @@ ReflectorStream::ReflectorStream(SourceInfo::StreamInfo* inInfo)
         fDestRTCPAddr = fStreamInfo.fDestIPAddr;
         fDestRTCPPort = fStreamInfo.fPort + 1;
     }
+
+	pkeyFrameCache = new CKeyFrameCache(MAX_CACHE_SIZE);
+	
 }
 
 
@@ -226,7 +230,12 @@ ReflectorStream::~ReflectorStream()
         //now release the socket pair
         sSocketPool.ReleaseUDPSocketPair(fSockets);
     }
-        
+
+    if(pkeyFrameCache)
+    {
+        delete pkeyFrameCache;
+        pkeyFrameCache = NULL;
+    }		
         //qtss_printf("Deleting stream %x\n", this);
 
     //delete every client Bucket
@@ -271,6 +280,10 @@ SInt32 ReflectorStream::AddOutput(ReflectorOutput* inOutput, SInt32 putInThisBuc
         for (UInt32 dTwo = 0; dTwo < sBucketSize; dTwo++)
             Assert(fOutputArray[dOne][dTwo] != inOutput);
 #endif
+    if(inOutput)
+    {
+        inOutput->setNewFlag(true);
+    }
 
     // If caller didn't specify a bucket, find a bucket
     if (putInThisBucket < 0)
@@ -487,39 +500,46 @@ void ReflectorStream::SendReceiverReport()
 }
 
 void ReflectorStream::PushPacket(char *packet, UInt32 packetLen, Bool16 isRTCP)
-{
+	{	 
+		FU_Head *head = (FU_Head*)&packet[13];
+	
+		if (packetLen > 0)
+		{	
+			ReflectorPacket* thePacket = NULL;
+			if (isRTCP)
+			{	//qtss_printf("ReflectorStream::PushPacket RTCP packetlen = %"_U32BITARG_"\n",packetLen);
+				thePacket = ((ReflectorSocket*)fSockets->GetSocketB())->GetPacket();
+				if (thePacket == NULL)
+				{	//qtss_printf("ReflectorStream::PushPacket RTCP GetPacket() is NULL\n");
+					return;
+				}
+				
+				OSMutexLocker locker( ((ReflectorSocket*)(fSockets->GetSocketB()) )->GetDemuxer()->GetMutex());
+				thePacket->SetPacketData(packet, packetLen);
+				((ReflectorSocket*)fSockets->GetSocketB())->ProcessPacket(OS::Milliseconds(),thePacket,0,0);
+				((ReflectorSocket*)fSockets->GetSocketB())->Signal(Task::kIdleEvent);
+			}
+			else
+			{	//qtss_printf("ReflectorStream::PushPacket RTP packetlen = %"_U32BITARG_"\n",packetLen);
+				thePacket =  ((ReflectorSocket*)fSockets->GetSocketA())->GetPacket();
+				if (thePacket == NULL)
+				{	//qtss_printf("ReflectorStream::PushPacket GetPacket() is NULL\n");
+					return;
+				}
+		
+				OSMutexLocker locker(((ReflectorSocket*)(fSockets->GetSocketA()))->GetDemuxer()->GetMutex());
+				thePacket->SetPacketData(packet, packetLen);
+				if(head->nalu_type != 0)
+				{
+					pkeyFrameCache->PutOnePacket(packet,packetLen,head->nalu_type,head->s);
+				}
+	
+				 ((ReflectorSocket*)fSockets->GetSocketA())->ProcessPacket(OS::Milliseconds(),thePacket,0,0);
+				 ((ReflectorSocket*)fSockets->GetSocketA())->Signal(Task::kIdleEvent);
+			}
+		}
+	}
 
-    if (packetLen > 0)
-    {   
-        ReflectorPacket* thePacket = NULL;
-        if (isRTCP)
-        {   //qtss_printf("ReflectorStream::PushPacket RTCP packetlen = %"_U32BITARG_"\n",packetLen);
-            thePacket = ((ReflectorSocket*)fSockets->GetSocketB())->GetPacket();
-            if (thePacket == NULL)
-            {   //qtss_printf("ReflectorStream::PushPacket RTCP GetPacket() is NULL\n");
-                return;
-            }
-            
-            OSMutexLocker locker( ((ReflectorSocket*)(fSockets->GetSocketB()) )->GetDemuxer()->GetMutex());
-            thePacket->SetPacketData(packet, packetLen);
-            ((ReflectorSocket*)fSockets->GetSocketB())->ProcessPacket(OS::Milliseconds(),thePacket,0,0);
-            ((ReflectorSocket*)fSockets->GetSocketB())->Signal(Task::kIdleEvent);
-        }
-        else
-        {   //qtss_printf("ReflectorStream::PushPacket RTP packetlen = %"_U32BITARG_"\n",packetLen);
-            thePacket =  ((ReflectorSocket*)fSockets->GetSocketA())->GetPacket();
-            if (thePacket == NULL)
-            {   //qtss_printf("ReflectorStream::PushPacket GetPacket() is NULL\n");
-                return;
-            }
-    
-            OSMutexLocker locker(((ReflectorSocket*)(fSockets->GetSocketA()))->GetDemuxer()->GetMutex());
-            thePacket->SetPacketData(packet, packetLen);
-             ((ReflectorSocket*)fSockets->GetSocketA())->ProcessPacket(OS::Milliseconds(),thePacket,0,0);
-             ((ReflectorSocket*)fSockets->GetSocketA())->Signal(Task::kIdleEvent);
-        }
-    }
-}
 
 
 
@@ -1050,29 +1070,29 @@ void ReflectorSender::ReflectPackets(SInt64* ioWakeupTime, OSQueue* inFreeQueue)
 			{                  
 				packetElem = fFirstPacketInQueueForNewOutput; // everybody starts at the oldest packet in the buffer delay or uses a bookmark
 				firstPacket = true;
-				theOutput->fNewOutput = false;    
+				theOutput->setNewFlag(false);    
 			}
 
 			//->geyijyn@20150427
 			//判断是否需要重新定位书签的位置
 			//<-
-			if(NeedRelocateBookMark(packetElem))
-			{
-				OSQueueElem* nextElem = packetElem->Prev();	//从下一个位置开始重新定位
-				Assert(nextElem != NULL);					//必然不为空
-				packetElem =  this->GetNewestKeyFrameFirstPacket(nextElem,0);	
-				if (packetElem)	
-				{
-					printf("[geyijun] =======> RtpSeq [%d]=>[%d] \n",
-						((ReflectorPacket*)(nextElem->GetEnclosingObject()))->GetPacketRTPSeqNum(),
-						((ReflectorPacket*)(packetElem->GetEnclosingObject()))->GetPacketRTPSeqNum());
-				}
-				else
-				{
-					packetElem = nextElem;	
-				}	
-	
-			}
+			//if(NeedRelocateBookMark(packetElem))
+			//{
+			//	OSQueueElem* nextElem = packetElem->Prev();	//从下一个位置开始重新定位
+			//	Assert(nextElem != NULL);					//必然不为空
+			//	packetElem =  this->GetNewestKeyFrameFirstPacket(nextElem,0);	
+			//	if (packetElem)
+			//	{
+			//		printf("[geyijun] =======> RtpSeq [%d]=>[%d] \n",
+			//			((ReflectorPacket*)(nextElem->GetEnclosingObject()))->GetPacketRTPSeqNum(),
+			//			((ReflectorPacket*)(packetElem->GetEnclosingObject()))->GetPacketRTPSeqNum());
+			//	}
+			//	else
+			//	{
+			//		packetElem = nextElem;	
+			//	}
+			//}
+
 			SInt64  bucketDelay = ReflectorStream::sBucketDelayInMsec * (SInt64)bucketIndex;
 			packetElem = this->SendPacketsToOutput(theOutput, packetElem,currentTime, bucketDelay, firstPacket);
 			if (packetElem)
@@ -1104,65 +1124,116 @@ void ReflectorSender::ReflectPackets(SInt64* ioWakeupTime, OSQueue* inFreeQueue)
 
 OSQueueElem*    ReflectorSender::SendPacketsToOutput(ReflectorOutput* theOutput, OSQueueElem* currentPacket, SInt64 currentTime,  SInt64  bucketDelay, Bool16 firstPacket)
 {
-    OSQueueElem* lastPacket = currentPacket;
-    OSQueueIter qIter(&fPacketQueue, currentPacket);  // starts from beginning if currentPacket == NULL, else from currentPacket                
-    
-    UInt32 count = 0;
-    QTSS_Error err = QTSS_NoErr;
-    while ( !qIter.IsDone() )
-    {                   
-        currentPacket = qIter.GetCurrent();
-        lastPacket = currentPacket;
-        
-        ReflectorPacket*    thePacket = (ReflectorPacket*)currentPacket->GetEnclosingObject();
-        SInt64  packetLateness =  bucketDelay;
-        SInt64 timeToSendPacket = -1;
-              
-        //printf("packetLateness %qd, seq# %li\n", packetLateness, (SInt32) DGetPacketSeqNumber( &thePacket->fPacketPtr ) );          
-                                         
-        err = theOutput->WritePacket(&thePacket->fPacketPtr, fStream, fWriteFlag, packetLateness, &timeToSendPacket,&thePacket->fStreamCountID,&thePacket->fTimeArrived, firstPacket );                
+	OSQueueElem* lastPacket = currentPacket;
+	OSQueueIter qIter(&fPacketQueue, currentPacket);  // starts from beginning if currentPacket == NULL, else from currentPacket				
+		
+	UInt32 count = 0;
+	QTSS_Error err = QTSS_NoErr;
+	while ( !qIter.IsDone() )
+	{					
+		currentPacket = qIter.GetCurrent();
+		lastPacket = currentPacket;
+			
+		ReflectorPacket*	thePacket = (ReflectorPacket*)currentPacket->GetEnclosingObject();
+		SInt64	packetLateness =  bucketDelay;
+		SInt64 timeToSendPacket = -1;
+				  
+		bool getData = 0;
+		int offset = 0;
+		char onePkg[2048] = {0};
+		int pkglen = 0;
+	
+		StrPtrLen tmpptr;
+		while(theOutput->getNewFlag())
+		{
+			if(theOutput->getNewFlag() == false)
+			{
+				break;
+			}
+	
+			if(fStream == NULL)
+			{
+				break;
+			}
+	
+			if(fStream->pkeyFrameCache == NULL)
+			{
+				break;
+			}
+				
+			getData = fStream->pkeyFrameCache->GetOnePacket(onePkg,pkglen,offset);
+			if(getData == true)
+			{  
+				tmpptr.Set(onePkg,pkglen);
+				thePacket->fStreamCountID = theOutput->outPutSeq();
+				err = theOutput->WritePacket(&tmpptr, fStream, fWriteFlag, packetLateness, &timeToSendPacket,&thePacket->fStreamCountID,&thePacket->fTimeArrived, firstPacket );
+				if(err == QTSS_WouldBlock)
+				{
+					#if defined(__linux__)
+					usleep(2000);
+					#else
+					Sleep(2);
+					#endif
+					
+					theOutput->WritePacket(&tmpptr, fStream, fWriteFlag, packetLateness, &timeToSendPacket,&thePacket->fStreamCountID,&thePacket->fTimeArrived, firstPacket );
+				}
+				offset += pkglen + 4;
+				theOutput->addSeq();
+			}
+			else
+			{
+				break;
+			}
+		}
+		theOutput->setNewFlag(false);
+			
+		thePacket->fStreamCountID = theOutput->outPutSeq();
+		err = theOutput->WritePacket(&thePacket->fPacketPtr, fStream, fWriteFlag, packetLateness, &timeToSendPacket,&thePacket->fStreamCountID,&thePacket->fTimeArrived, firstPacket );
+		if (err == QTSS_WouldBlock)
+		{ // call us again in # ms to retry on an EAGAIN
+			
+			if ((timeToSendPacket > 0) && ( (fNextTimeToRun + currentTime) > timeToSendPacket )) // blocked but we are scheduled to wake up later
+				fNextTimeToRun = timeToSendPacket - currentTime;
+			
+			if (theOutput->fLastIntervalMilliSec < 5 )
+				theOutput->fLastIntervalMilliSec = 5;
 
-        if (err == QTSS_WouldBlock)
-        { // call us again in # ms to retry on an EAGAIN
-            
-            if ((timeToSendPacket > 0) && ( (fNextTimeToRun + currentTime) > timeToSendPacket )) // blocked but we are scheduled to wake up later
-                fNextTimeToRun = timeToSendPacket - currentTime;
-            
-            if (theOutput->fLastIntervalMilliSec < 5 )
-                theOutput->fLastIntervalMilliSec = 5;
+				if ( timeToSendPacket < 0 ) // blocked and we are behind
+				{	 //qtss_printf("fNextTimeToRun = theOutput->fLastIntervalMilliSec=%qd;\n", theOutput->fLastIntervalMilliSec); // Use the last packet interval 
+					 this->SetNextTimeToRun(theOutput->fLastIntervalMilliSec);
+				}
+				   
+				if (fNextTimeToRun > 100) //don't wait that long
+				{	 //qtss_printf("fNextTimeToRun = %qd now 100;\n", fNextTimeToRun);
+					 this->SetNextTimeToRun(100);
+				}
+	
+				if (fNextTimeToRun < 5) //wait longer
+				{	 //qtss_printf("fNextTimeToRun = 5;\n");
+					 this->SetNextTimeToRun(5);
+				}
+	
+				if (theOutput->fLastIntervalMilliSec >= 100) // allow up to 1 second max -- allow some time for the socket to clear and don't go into a tight loop if the client is gone.
+					theOutput->fLastIntervalMilliSec = 100;
+				else
+					theOutput->fLastIntervalMilliSec *= 2; // scale upwards over time
+	
+				//qtss_printf ( "Blocked ReflectorSender::SendPacketsToOutput timeToSendPacket=%qd fLastIntervalMilliSec=%qd fNextTimeToRun=%qd \n", timeToSendPacket, theOutput->fLastIntervalMilliSec, fNextTimeToRun);
+			   
+			   break;
+			}
+			else
+			{
+				theOutput->addSeq();
+			}
+			count++;
+			qIter.Next();
+		
+		}
+	
+		return lastPacket;
+	}
 
-            if ( timeToSendPacket < 0 ) // blocked and we are behind
-            {    //qtss_printf("fNextTimeToRun = theOutput->fLastIntervalMilliSec=%qd;\n", theOutput->fLastIntervalMilliSec); // Use the last packet interval 
-                 this->SetNextTimeToRun(theOutput->fLastIntervalMilliSec);
-            }
-               
-            if (fNextTimeToRun > 100) //don't wait that long
-            {    //qtss_printf("fNextTimeToRun = %qd now 100;\n", fNextTimeToRun);
-                 this->SetNextTimeToRun(100);
-            }
-
-            if (fNextTimeToRun < 5) //wait longer
-            {    //qtss_printf("fNextTimeToRun = 5;\n");
-                 this->SetNextTimeToRun(5);
-            }
-
-            if (theOutput->fLastIntervalMilliSec >= 100) // allow up to 1 second max -- allow some time for the socket to clear and don't go into a tight loop if the client is gone.
-                theOutput->fLastIntervalMilliSec = 100;
-            else
-                theOutput->fLastIntervalMilliSec *= 2; // scale upwards over time
-
-            //qtss_printf ( "Blocked ReflectorSender::SendPacketsToOutput timeToSendPacket=%qd fLastIntervalMilliSec=%qd fNextTimeToRun=%qd \n", timeToSendPacket, theOutput->fLastIntervalMilliSec, fNextTimeToRun);
-           
-           break;
-        }
-
-        count++;
-        qIter.Next();
-    
-    }
-
-    return lastPacket;
-}
 
 OSQueueElem*    ReflectorSender::GetClientBufferStartPacketOffset(SInt64 offsetMsec,Bool16 needKeyFrameFirstPacket)
 {
@@ -1292,7 +1363,7 @@ Bool16 ReflectorSender::NeedRelocateBookMark(OSQueueElem* currentElem)
 			return true;
 		}
 	}
-	//触发条件2 :  已经出现帧序号不联系的情况。后面的数据包已经被老化回收了
+	//触发条件2 :  已经出现帧序号不连续的情况。后面的数据包已经被老化回收了
 	{
 		ReflectorPacket* currentPacket = (ReflectorPacket*)currentElem->GetEnclosingObject();  
 		ReflectorPacket* nextPacket = (ReflectorPacket*)nextElem->GetEnclosingObject();  
@@ -1714,7 +1785,7 @@ void ReflectorSocket::FilterInvalidSSRCs(ReflectorPacket* thePacket,Bool16 isRTC
 }
 
 Bool16 ReflectorSocket::ProcessPacket(const SInt64& inMilliseconds,ReflectorPacket* thePacket,UInt32 theRemoteAddr,UInt16 theRemotePort)
-{   
+{
     Bool16 done = false; // stop when result is true
     if (thePacket != NULL) do
     {

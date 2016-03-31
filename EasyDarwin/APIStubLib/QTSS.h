@@ -40,7 +40,10 @@ extern "C" {
 #define QTSS_MAX_MODULE_NAME_LENGTH     64
 #define QTSS_MAX_SESSION_ID_LENGTH      32
 #define QTSS_MAX_ATTRIBUTE_NAME_SIZE    64
-
+#define QTSS_MAX_URL_LENGTH				512
+#define QTSS_MAX_FILE_NAME_LENGTH		128
+#define EASY_REQUEST_BUFFER_SIZE_LEN	512*1024
+#define EASY_ACCENCODER_BUFFER_SIZE_LEN	16*1024*4
 
 //*******************************
 // ENUMERATED TYPES
@@ -70,7 +73,8 @@ enum
     QTSS_NoMoreData         = -17,
     QTSS_AttrDoesntExist    = -18,
     QTSS_AttrNameExists     = -19,
-    QTSS_InstanceAttrsNotAllowed= -20
+    QTSS_InstanceAttrsNotAllowed= -20,
+	QTSS_UnknowAudioCoder   =-21
 };
 typedef SInt32 QTSS_Error;
 
@@ -268,7 +272,8 @@ enum
     qtss3GPPStreamObjectType        = FOUR_CHARS_TO_INT('3', 's', 't', 'r'), //3str
     qtss3GPPClientSessionObjectType = FOUR_CHARS_TO_INT('3', 's', 'e', 's'), //3ses
     qtss3GPPRTSPObjectType          = FOUR_CHARS_TO_INT('3', 'r', 't', 's'), //3rts
-    qtss3GPPRequestObjectType       = FOUR_CHARS_TO_INT('3', 'r', 'e', 'q')  //3req
+    qtss3GPPRequestObjectType       = FOUR_CHARS_TO_INT('3', 'r', 'e', 'q'), //3req
+	easyHTTPSessionObjectType		= FOUR_CHARS_TO_INT('e', 'h', 's', 'o')  //ehso
     
 };
 typedef UInt32 QTSS_ObjectType;
@@ -564,6 +569,33 @@ enum
 };
 typedef UInt32 QTSS_RTSPSessionAttributes;
 
+
+enum
+{
+    //Easy_HTTPSessionObject parameters
+    easyHTTPSesID					= 0,        //read      //UInt32        //This is a unique ID for each session since the server started up.
+    easyHTTPSesLocalAddr			= 1,        //read      //UInt32        //Local IP address for this HTTP connection
+    easyHTTPSesLocalAddrStr			= 2,        //read      //char array	//Ditto, in dotted-decimal format.
+    easyHTTPSesLocalDNS				= 3,        //read      //char array	//DNS name of local IP address for this RTSP connection.
+    easyHTTPSesRemoteAddr			= 4,        //read      //UInt32        //IP address of client.
+    easyHTTPSesRemoteAddrStr		= 5,        //read      //char array	//IP address addr of client, in dotted-decimal format.
+    easyHTTPSesEventCntxt			= 6,        //read      //QTSS_EventContextRef //An event context for the HTTP connection to the client. This should primarily be used to wait for EV_WR events if flow-controlled when responding to a client. 
+    easyHTTPSesLastUserName			= 7,		//read      //char array	// Private
+    easyHTTPSesLastUserPassword     = 8,		//read     //char array		// Private
+    easyHTTPSesLastURLRealm         = 9,		//read     //char array		// Private
+    
+    easyHTTPSesLocalPort			= 10,       //read      //UInt16        // This is the local port for the connection
+    easyHTTPSesRemotePort			= 11,       //read      //UInt16        // This is the client port for the connection
+    
+    easyHTTPSesLastToken			= 12,		//read      //char array	// Private
+
+	easyHTTPSesContentBody			= 13,		//read		//char array
+	easyHTTPSesContentBodyOffset	= 14,		//read		//UInt32
+
+    easyHTTPSesNumParams			= 15
+};
+typedef UInt32 Easy_HTTPSessionAttributes;
+
 //QTSS_3GPPRTSPSessionObject //class RTSPSession3GPP
 enum 
 {
@@ -659,22 +691,22 @@ enum
     
     // These parameters ARE pre-emptive safe.
     
-    qtssServerAPIVersion            = 0,    //read  //UInt32            //The API version supported by this server (format 0xMMMMmmmm, where M=major version, m=minor version)
-    qtssSvrDefaultDNSName           = 1,    //read  //char array        //The "default" DNS name of the server
-    qtssSvrDefaultIPAddr            = 2,    //read  //UInt32            //The "default" IP address of the server
-    qtssSvrServerName               = 3,    //read  //char array        //Name of the server
-    qtssSvrServerVersion            = 4,    //read  //char array        //Version of the server
-    qtssSvrServerBuildDate          = 5,    //read  //char array        //When was the server built?
-    qtssSvrRTSPPorts                = 6,    //read  // NOT PREEMPTIVE SAFE!//UInt16         //Indexed parameter: all the ports the server is listening on
-    qtssSvrRTSPServerHeader         = 7,    //read  //char array        //Server: header that the server uses to respond to RTSP clients
+    qtssServerAPIVersion            = 0,    //read		//UInt32            //The API version supported by this server (format 0xMMMMmmmm, where M=major version, m=minor version)
+    qtssSvrDefaultDNSName           = 1,    //read		//char array        //The "default" DNS name of the server
+    qtssSvrDefaultIPAddr            = 2,    //read		//UInt32            //The "default" IP address of the server
+    qtssSvrServerName               = 3,    //read		//char array        //Name of the server
+    qtssSvrServerVersion            = 4,    //read		//char array        //Version of the server
+    qtssSvrServerBuildDate          = 5,    //read		//char array        //When was the server built?
+    qtssSvrRTSPPorts                = 6,    //read		// NOT PREEMPTIVE SAFE!//UInt16         //Indexed parameter: all the ports the server is listening on
+    qtssSvrRTSPServerHeader         = 7,    //read		//char array        //Server: header that the server uses to respond to RTSP clients
 
     // These parameters are NOT pre-emptive safe, they cannot be accessed
     // via. QTSS_GetValuePtr. Some exceptions noted below
     
-    qtssSvrState                    = 8,    //r/w   //QTSS_ServerState  //The current state of the server. If a module sets the server state, the server will respond in the appropriate fashion. Setting to qtssRefusingConnectionsState causes the server to refuse connections, setting to qtssFatalErrorState or qtssShuttingDownState causes the server to quit.
-    qtssSvrIsOutOfDescriptors       = 9,    //read  //Bool16            //true if the server has run out of file descriptors, false otherwise
-    qtssRTSPCurrentSessionCount     = 10,   //read  //UInt32            //Current number of connected clients over standard RTSP
-    qtssRTSPHTTPCurrentSessionCount = 11,   //read  //UInt32            //Current number of connected clients over RTSP / HTTP
+    qtssSvrState                    = 8,    //r/w		//QTSS_ServerState  //The current state of the server. If a module sets the server state, the server will respond in the appropriate fashion. Setting to qtssRefusingConnectionsState causes the server to refuse connections, setting to qtssFatalErrorState or qtssShuttingDownState causes the server to quit.
+    qtssSvrIsOutOfDescriptors       = 9,    //read		//Bool16            //true if the server has run out of file descriptors, false otherwise
+    qtssRTSPCurrentSessionCount     = 10,   //read		//UInt32            //Current number of connected clients over standard RTSP
+    qtssRTSPHTTPCurrentSessionCount = 11,   //read		//UInt32            //Current number of connected clients over RTSP / HTTP
 
     qtssRTPSvrNumUDPSockets         = 12,   //read      //UInt32    //Number of UDP sockets currently being used by the server
     qtssRTPSvrCurConn               = 13,   //read      //UInt32    //Number of clients currently connected to the server
@@ -686,7 +718,7 @@ enum
     qtssRTPSvrTotalPackets          = 19,   //read      //UInt64    //Total number of bytes served since startup
     
     qtssSvrHandledMethods           = 20,   //r/w       //QTSS_RTSPMethod   //The methods that the server supports. Modules should append the methods they support to this attribute in their QTSS_Initialize_Role.
-    qtssSvrModuleObjects            = 21,   //read  // this IS PREMPTIVE SAFE!  //QTSS_ModuleObject // A module object representing each module
+    qtssSvrModuleObjects            = 21,   //read		//this IS PREMPTIVE SAFE!  //QTSS_ModuleObject // A module object representing each module
     qtssSvrStartupTime              = 22,   //read      //QTSS_TimeVal  //Time the server started up
     qtssSvrGMTOffsetInHrs           = 23,   //read      //SInt32        //Server time zone (offset from GMT in hours)
     qtssSvrDefaultIPAddrStr         = 24,   //read      //char array    //The "default" IP address of the server as a string
@@ -711,7 +743,7 @@ enum
     qtssSvrServerPlatform           = 39,   //read      //char array //Platform (OS) of the server
     qtssSvrRTSPServerComment        = 40,   //read      //char array //RTSP comment for the server header    
     qtssSvrNumThinned               = 41,   //read      //SInt32    //Number of thinned sessions
-    qtssSvrNumThreads               = 42,   //read     //UInt32    //Number of task threads // see also qtssPrefsRunNumThreads
+    qtssSvrNumThreads               = 42,   //read		//UInt32    //Number of task threads // see also qtssPrefsRunNumThreads
     qtssSvrNumParams                = 43
 };
 typedef UInt32 QTSS_ServerAttributes;
@@ -750,9 +782,9 @@ enum
     qtssPrefsScreenLogging          = 18,   //"screen_logging"              //Bool16        //Should the error logger echo messages to the screen?
     qtssPrefsErrorLogEnabled        = 19,   //"error_logging"               //Bool16        //Is error logging enabled?
 
-    qtssPrefsDropVideoAllPacketsDelayInMsec = 20,   //"drop_all_video_delay"    //SInt32 // Don't send video packets later than this
-    qtssPrefsStartThinningDelayInMsec       = 21,   //"start_thinning_delay"    //SInt32 // lateness at which we might start thinning
-    qtssPrefsLargeWindowSizeInK             = 22,   //"large_window_size"  // UInt32    //default size that will be used for high bitrate movies
+    qtssPrefsDropVideoAllPacketsDelayInMsec = 20,   //"drop_all_video_delay"//SInt32 // Don't send video packets later than this
+    qtssPrefsStartThinningDelayInMsec       = 21,   //"start_thinning_delay"//SInt32 // lateness at which we might start thinning
+    qtssPrefsLargeWindowSizeInK             = 22,   //"large_window_size"	// UInt32    //default size that will be used for high bitrate movies
     qtssPrefsWindowSizeThreshold            = 23,   //"window_size_threshold"  // UInt32    //bitrate at which we switch to larger window size
     
     qtssPrefsMinTCPBufferSizeInBytes        = 24,   //"min_tcp_buffer_size" //UInt32    // When streaming over TCP, this is the minimum size the TCP socket send buffer can be set to
@@ -830,7 +862,9 @@ enum
     qtssPrefs3GPPTargetTime  				= 88,   // "3gpp_target_time_milliseconds" //UInt32 // milliseconds set as the target time.
     qtssPrefsPlayersReqDisableThinning 		= 89,   // "player_requires_disable_thinning" //Char array //name of player to set the target time for
 	
-    qtssPrefsNumParams                      = 90
+	easyPrefsHTTPServicePort				= 90,	// "http_service_port"
+
+    qtssPrefsNumParams                      = 91
 };
 
 typedef UInt32 QTSS_PrefsAttributes;
@@ -1010,22 +1044,25 @@ enum
     QTSS_RTSPSessionClosing_Role =   FOUR_CHARS_TO_INT('s', 'e', 's', 'c'), //sesc //RTSP session is going away
 
     QTSS_RTSPIncomingData_Role =     FOUR_CHARS_TO_INT('i', 'c', 'm', 'd'), //icmd //Incoming interleaved RTP data on this RTSP connection
-	QTSS_RTSPRelayingData_Role =     FOUR_CHARS_TO_INT('r', 'l', 'y', 'd'), //rlyd //Incoming interleaved RTP data on this RTSP connection
- 
+
     //RTP-specific
-    QTSS_RTPSendPackets_Role =           FOUR_CHARS_TO_INT('s', 'e', 'n', 'd'), //send //Send RTP packets to the client
-    QTSS_ClientSessionClosing_Role =     FOUR_CHARS_TO_INT('d', 'e', 's', 's'), //dess //Client session is going away
+    QTSS_RTPSendPackets_Role =			FOUR_CHARS_TO_INT('s', 'e', 'n', 'd'), //send //Send RTP packets to the client
+    QTSS_ClientSessionClosing_Role =	FOUR_CHARS_TO_INT('d', 'e', 's', 's'), //dess //Client session is going away
     
     //RTCP-specific
-    QTSS_RTCPProcess_Role =          FOUR_CHARS_TO_INT('r', 't', 'c', 'p'), //rtcp //Process all RTCP packets sent to the server
+    QTSS_RTCPProcess_Role =				FOUR_CHARS_TO_INT('r', 't', 'c', 'p'), //rtcp //Process all RTCP packets sent to the server
 
     //File system roles
-    QTSS_OpenFilePreProcess_Role =  FOUR_CHARS_TO_INT('o', 'p', 'p', 'r'),  //oppr
-    QTSS_OpenFile_Role =            FOUR_CHARS_TO_INT('o', 'p', 'f', 'l'),  //opfl
-    QTSS_AdviseFile_Role =          FOUR_CHARS_TO_INT('a', 'd', 'f', 'l'),  //adfl
-    QTSS_ReadFile_Role =            FOUR_CHARS_TO_INT('r', 'd', 'f', 'l'),  //rdfl
-    QTSS_CloseFile_Role =           FOUR_CHARS_TO_INT('c', 'l', 'f', 'l'),  //clfl
-    QTSS_RequestEventFile_Role =    FOUR_CHARS_TO_INT('r', 'e', 'f', 'l'),  //refl
+    QTSS_OpenFilePreProcess_Role =		FOUR_CHARS_TO_INT('o', 'p', 'p', 'r'),  //oppr
+    QTSS_OpenFile_Role =				FOUR_CHARS_TO_INT('o', 'p', 'f', 'l'),  //opfl
+    QTSS_AdviseFile_Role =				FOUR_CHARS_TO_INT('a', 'd', 'f', 'l'),  //adfl
+    QTSS_ReadFile_Role =				FOUR_CHARS_TO_INT('r', 'd', 'f', 'l'),  //rdfl
+    QTSS_CloseFile_Role =				FOUR_CHARS_TO_INT('c', 'l', 'f', 'l'),  //clfl
+    QTSS_RequestEventFile_Role =		FOUR_CHARS_TO_INT('r', 'e', 'f', 'l'),  //refl
+
+	//HLS Session
+	Easy_HLSOpen_Role	=				FOUR_CHARS_TO_INT('h', 'l', 's', 'o'),  //hlso
+	Easy_HLSClose_Role	=				FOUR_CHARS_TO_INT('h', 'l', 's', 'c'),  //hlsc
     
 };
 typedef UInt32 QTSS_Role;
@@ -1134,14 +1171,6 @@ typedef struct
 
 } QTSS_IncomingData_Params;
 
-typedef struct 
-{
-    QTSS_RTSPSessionObject		inRTSPSession;
-	UInt8						inChannel;
-    char*                       inPacketData;
-    UInt16                      inPacketLen;
-} QTSS_RelayingData_Params;
-
 typedef struct
 {
     QTSS_RTSPSessionObject      inRTSPSession;
@@ -1202,6 +1231,19 @@ typedef struct
     QTSS_EventType              inEventMask;
 } QTSS_RequestEventFile_Params;
 
+typedef struct
+{
+    char*                       inStreamName;
+	char*						inRTSPUrl;
+	UInt32						inTimeout;	//HLSÊ±¼ä
+	char*						outHLSUrl;
+} Easy_HLSOpen_Params;
+
+typedef struct
+{
+    char*                       inStreamName;
+} Easy_HLSClose_Params;
+
 typedef union
 {
     QTSS_Register_Params                regParams;
@@ -1230,8 +1272,8 @@ typedef union
     QTSS_CloseFile_Params               closeFileParams;
     QTSS_RequestEventFile_Params        reqEventFileParams;
 
-	QTSS_RelayingData_Params			rtspRelayingDataParams;
-    
+	Easy_HLSOpen_Params					easyHLSOpenParams;
+	Easy_HLSClose_Params				easyHLSCloseParams;
 } QTSS_RoleParams, *QTSS_RoleParamPtr;
 
 typedef struct
@@ -2009,11 +2051,16 @@ QTSS_Error  QTSS_Authenticate(  const char* inAuthUserName,
 //                      QTSS_BadArgument
 QTSS_Error    QTSS_Authorize(QTSS_RTSPRequestObject inAuthRequestObject, char** outAuthRealm, Bool16* outAuthUserAllowed);
 
-QTSS_Error	QTSS_ReflectRTPData(QTSS_Object inObject, const char* inData, UInt32 inDataLen, UInt32 inTrackID);
-
 void        QTSS_LockStdLib();
 void        QTSS_UnlockStdLib();
 
+// Start HLS Session
+QTSS_Error	Easy_StartHLSession(const char* inSessionName, const char* inURL, UInt32 inTimeout, char* outURL);
+// Stop HLS Session
+QTSS_Error	Easy_StopHLSession(const char* inSessionName);
+// Get HLS Sessions(json)
+void*	Easy_GetHLSessions();
+void*	Easy_GetRTSPPushSessions();
 #ifdef QTSS_OLDROUTINENAMES
 
 //

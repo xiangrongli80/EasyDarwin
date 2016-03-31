@@ -31,6 +31,7 @@
     
 */
 
+#include "QTSServerInterface.h"
 #include "QTSSReflectorModule.h"
 #include "QTSSModuleUtils.h"
 #include "ReflectorSession.h"
@@ -58,6 +59,7 @@
 #include "SDPSourceInfo.h"
 
 #include "SDPUtils.h"
+#include "sdpCache.h"
 
 #ifndef __Win32__
     #include <unistd.h>
@@ -106,6 +108,9 @@ static Bool16   sDefaultAllowNonSDPURLs = true;
 
 static Bool16   sRTPInfoDisabled = false;
 static Bool16   sDefaultRTPInfoDisabled = false;
+
+static Bool16   sHLSOutputEnabled = false;
+static Bool16   sDefaultHLSOutputEnabled = false;
 
 static Bool16   sAnnounceEnabled = true;
 static Bool16   sDefaultAnnounceEnabled = true;
@@ -381,7 +386,7 @@ QTSS_Error Initialize(QTSS_Initialize_Params* inParams)
     QTSSModuleUtils::Initialize(inParams->inMessages, inParams->inServer, inParams->inErrorLogStream);
 	QTSS3GPPModuleUtils::Initialize(inParams);
     QTAccessFile::Initialize();
-    sSessionMap = NEW OSRefTable();
+    sSessionMap = QTSServerInterface::GetServer()->GetReflectorSessionMap();
     sServerPrefs = inParams->inPrefs;
     sServer = inParams->inServer;
 #if QTSS_REFLECTOR_EXTERNAL_MODULE
@@ -592,6 +597,10 @@ QTSS_Error RereadPrefs()
     
     QTSS3GPPModuleUtils::ReadPrefs();
 
+	//Êä³öHLS
+    QTSSModuleUtils::GetAttribute(sPrefs, "hls_output_enabled",  qtssAttrDataTypeBool16,
+                                &sHLSOutputEnabled, &sDefaultHLSOutputEnabled, sizeof(sDefaultHLSOutputEnabled));
+
                         
     return QTSS_NoErr;
 }
@@ -625,6 +634,9 @@ QTSS_Error ProcessRTPData(QTSS_IncomingData_Params* inParams)
     if (theSession == NULL || theErr != QTSS_NoErr) 
         return QTSS_NoErr;
     
+	if(sHLSOutputEnabled)
+		theSession->StartHLSSession();
+
     // it is a broadcaster session
     //qtss_printf("QTSSReflectorModule.cpp:is broadcaster session\n");
 
@@ -666,14 +678,17 @@ QTSS_Error ProcessRTPData(QTSS_IncomingData_Params* inParams)
         UInt32 inIndex = packetChannel / 2; // one stream per every 2 channels rtcp channel handled below
         ReflectorStream* theStream = NULL;
         if (inIndex < numStreams) 
-        {   theStream = theSession->GetStreamByIndex(inIndex);
+        {   
+			theStream = theSession->GetStreamByIndex(inIndex);
+			if(theStream == NULL) return QTSS_Unimplemented;
 
             SourceInfo::StreamInfo* theStreamInfo =theStream->GetStreamInfo();  
-            UInt16 serverReceivePort =theStreamInfo->fPort;         
+            UInt16 serverReceivePort =theStreamInfo->fPort;
 
             Bool16 isRTCP =false;
             if (theStream != NULL)
-            {   if (packetChannel & 1)
+            {   
+				if (packetChannel & 1)
                 {   serverReceivePort ++;
                     isRTCP = true;
                 }
@@ -1071,19 +1086,24 @@ QTSS_Error DoAnnounce(QTSS_StandardRTSP_Params* inParams)
    // sortedSDP.GetSessionHeaders()->PrintStrEOL();
    // sortedSDP.GetMediaHeaders()->PrintStrEOL();
 
-    // write the file !! need error reporting
-    FILE* theSDPFile= ::fopen(theFullPath.Ptr, "wb");//open 
-    if (theSDPFile != NULL)
-    {  
-        qtss_fprintf(theSDPFile, "%s", sessionHeaders);
-        qtss_fprintf(theSDPFile, "%s", mediaHeaders);
-        ::fflush(theSDPFile);
-        ::fclose(theSDPFile);   
-    }
-    else
-    {   return QTSSModuleUtils::SendErrorResponse(inParams->inRTSPRequest, qtssClientForbidden,0);
-    }
-    
+#if 0
+	   // write the file !! need error reporting
+	   FILE* theSDPFile= ::fopen(theFullPath.Ptr, "wb");//open 
+	   if (theSDPFile != NULL)
+	   {  
+		   qtss_fprintf(theSDPFile, "%s", sessionHeaders);
+		   qtss_fprintf(theSDPFile, "%s", mediaHeaders);
+		   ::fflush(theSDPFile);
+		   ::fclose(theSDPFile);   
+	   }
+	   else
+	   {   return QTSSModuleUtils::SendErrorResponse(inParams->inRTSPRequest, qtssClientForbidden,0);
+	   }
+#endif 
+	   char sdpContext[1024] = {0};
+	   sprintf(sdpContext,"%s%s",sessionHeaders,mediaHeaders);
+	   CSdpCache::GetInstance()->setSdpMap(theFullPath.Ptr,sdpContext);
+	   
 
     //qtss_printf("QTSSReflectorModule:DoAnnounce SendResponse OK=200\n");
     
@@ -1411,136 +1431,22 @@ ReflectorSession* FindOrCreateSession(StrPtrLen* inPath, QTSS_StandardRTSP_Param
         delete theInfo;
         
         theSession = (ReflectorSession*)theSessionRef->GetObject(); 
-        if (isPush && theSession)
+		if (isPush && theSession && !(theSession->IsSetup()))
         {
             UInt32 theSetupFlag = ReflectorSession::kMarkSetup | ReflectorSession::kIsPushSession;
             QTSS_Error theErr = theSession->SetupReflectorSession(NULL, inParams, theSetupFlag);
             if (theErr != QTSS_NoErr)
-            {   return NULL;
+            {   
+				return NULL;
             }
         }
     }
             
     Assert(theSession != NULL);
 
-    return theSession;
-    if (theSessionRef == NULL)
-    {
-        //If this URL doesn't already have a reflector session, we must make a new
-        //one. The first step is to create an SDPSourceInfo object.
-        
-        StrPtrLen theFileData;
-        StrPtrLen theFileDeleteData;
-        
-        //
-        // If no file data is provided by the caller, read the file data out of the file.
-        // If file data is provided, use that as our SDP data
-        if (inData == NULL)
-        {   (void)QTSSModuleUtils::ReadEntireFile(inPath->Ptr, &theFileDeleteData);
-            theFileData = theFileDeleteData;
-        }
-        else
-            theFileData = *inData;
-        OSCharArrayDeleter fileDataDeleter(theFileDeleteData.Ptr); 
-            
-        if (theFileData.Len <= 0)
-            return NULL;
-            
-        SDPSourceInfo* theInfo = NEW SDPSourceInfo(theFileData.Ptr, theFileData.Len); // will make a copy
-            
-        if (!theInfo->IsReflectable())
-        {   delete theInfo;
-            return NULL;
-        }
-        if ( !theInfo->IsActiveNow() && !isPush)
-        {   delete theInfo;
-            return NULL;
-        }
-        
-        if (!InfoPortsOK(inParams, theInfo, inPath))
-        {   delete theInfo;
-            return NULL;
-        }
-        //
-        // Setup a ReflectorSession and bind the sockets. If we are negotiating,
-        // make sure to let the session know that this is a Push Session so
-        // ports may be modified.
-        UInt32 theSetupFlag = ReflectorSession::kMarkSetup;
-        if (isPush)
-            theSetupFlag |= ReflectorSession::kIsPushSession;
-        
-        theSession = NEW ReflectorSession(inPath);
-        
-        // SetupReflectorSession stores theInfo in theSession so DONT delete the Info if we fail here, leave it alone.
-        // deleting the session will delete the info.
-        QTSS_Error theErr = theSession->SetupReflectorSession(theInfo, inParams, theSetupFlag,sOneSSRCPerStream, sTimeoutSSRCSecs);
-        if (theErr != QTSS_NoErr || theSession == NULL)
-        {   delete theSession;
-            return NULL;
-        }
-       
-        //printf("Created reflector session = %"_U32BITARG_" theInfo=%"_U32BITARG_" \n", (UInt32) theSession,(UInt32)theInfo);
-        //put the session's ID into the session map.
-        theErr = sSessionMap->Register(theSession->GetRef());
-        Assert(theErr == QTSS_NoErr);
-
-        //unless we do this, the refcount won't increment (and we'll delete the session prematurely
-        if (!isPush)
-        {   OSRef* debug = sSessionMap->Resolve(inPath);
-            Assert(debug == theSession->GetRef());
-        }
-    }
-    else
-    {
-    
-        if (isPush) 
-            sSessionMap->Release(theSessionRef); // don't need if a push;// don't need if a push; A Release is necessary or we will leak ReflectorSessions.
-
-        if (foundSessionPtr)
-            *foundSessionPtr = true;
-            
-        StrPtrLen theFileData;
-        SDPSourceInfo* theInfo = NULL;
-        
-        if (inData == NULL)
-            (void)QTSSModuleUtils::ReadEntireFile(inPath->Ptr, &theFileData);
-        OSCharArrayDeleter charArrayDeleter(theFileData.Ptr);
-            
-        if (theFileData.Len <= 0)
-            return NULL;
-        
-        theInfo = NEW SDPSourceInfo(theFileData.Ptr, theFileData.Len);
-        if (theInfo == NULL) 
-            return NULL;
-            
-        if ( !theInfo->IsActiveNow() && !isPush)
-        {   delete theInfo;
-            return NULL;
-        }
-        
-        if (!InfoPortsOK(inParams, theInfo, inPath))
-        {   delete theInfo;
-            return NULL;
-        }
-        
-        delete theInfo;
-        
-        theSession = (ReflectorSession*)theSessionRef->GetObject(); 
-        if (isPush && theSession)
-        {
-            UInt32 theSetupFlag = ReflectorSession::kMarkSetup | ReflectorSession::kIsPushSession;
-            QTSS_Error theErr = theSession->SetupReflectorSession(NULL, inParams, theSetupFlag,sOneSSRCPerStream, sTimeoutSSRCSecs);
-            if (theErr != QTSS_NoErr)
-            {   return NULL;
-            }
-        }
-    }
-            
-    Assert(theSession != NULL);
-
-	// Turn off overbuffering if the "disable_overbuffering" pref says so
-	if (sDisableOverbuffering)
-		(void)QTSS_SetValue(inParams->inClientSession, qtssCliSesOverBufferEnabled, 0, &sFalse, sizeof(sFalse));
+	//// Turn off overbuffering if the "disable_overbuffering" pref says so
+	//if (sDisableOverbuffering)
+	//	(void)QTSS_SetValue(inParams->inClientSession, qtssCliSesOverBufferEnabled, 0, &sFalse, sizeof(sFalse));
 
     return theSession;
 }
@@ -1881,8 +1787,6 @@ QTSS_Error DoPlay(QTSS_StandardRTSP_Params* inParams, ReflectorSession* inSessio
         theErr = QTSS_SetValue(inParams->inRTSPSession, sRTSPBroadcastSessionAttr, 0, &inSession, sizeof(inSession));
         if (theErr != QTSS_NoErr)
             return QTSS_RequestFailed;
-            
-            
     
         //qtss_printf("QTSSReflectorModule:SET for att err=%"_S32BITARG_" id=%"_S32BITARG_"\n",theErr,inParams->inRTSPSession);
             
@@ -1924,7 +1828,6 @@ QTSS_Error DoPlay(QTSS_StandardRTSP_Params* inParams, ReflectorSession* inSessio
         {   
              return QTSSModuleUtils::SendErrorResponse(inParams->inRTSPRequest, qtssClientBadRequest, 0);
         }
-        
     
         KeepSession(inParams->inRTSPRequest,true);
         //qtss_printf("QTSSReflectorModule.cpp:DoPlay (PUSH) inRTSPSession=%"_U32BITARG_" inClientSession=%"_U32BITARG_"\n",(UInt32)inParams->inRTSPSession,(UInt32)inParams->inClientSession);
@@ -2102,6 +2005,10 @@ QTSS_Error DestroySession(QTSS_ClientSessionClosing_Params* inParams)
 
         //qtss_printf("QTSSReflectorModule.cpp:DestroySession broadcaster theSession=%"_U32BITARG_"\n", (UInt32) theSession);
         theSession->RemoveSessionFromOutput(inParams->inClientSession);
+
+		if(sHLSOutputEnabled)
+			theSession->StopHLSSession();
+
         RemoveOutput(NULL, theSession, killClients);
     }
     else
@@ -2145,16 +2052,16 @@ void RemoveOutput(ReflectorOutput* inOutput, ReflectorSession* inSession, Bool16
             SourceInfo* theInfo = inSession->GetSourceInfo();         
             Assert(theInfo);
             
-            if (theInfo->IsRTSPControlled())
-            {   
-                FileDeleter(inSession->GetSourcePath());
-            }
-                
+            //if (theInfo->IsRTSPControlled())
+            //{   
+            //    FileDeleter(inSession->GetSourcePath());
+            //}
+            //    
         
-            if (killClients || sTearDownClientsOnDisconnect)
-            {    
-                inSession->TearDownAllOutputs();
-            }
+            //if (killClients || sTearDownClientsOnDisconnect)
+            //{    
+            //    inSession->TearDownAllOutputs();
+            //}
         }
         
         //qtss_printf("QTSSReflectorModule.cpp:RemoveOutput refcount =%"_U32BITARG_"\n", inSession->GetRef()->GetRefCount() );
@@ -2184,12 +2091,12 @@ void RemoveOutput(ReflectorOutput* inOutput, ReflectorSession* inSession, Bool16
 				}
 			}  
             
-            if (theSessionRef->GetRefCount() == 0)
-            {   
-                //qtss_printf("QTSSReflectorModule.cpp:RemoveOutput UnRegister and delete session =%p refcount=%"_U32BITARG_"\n", theSessionRef, theSessionRef->GetRefCount() ) ;       
-                sSessionMap->UnRegister(theSessionRef);
-                delete inSession;
-            }
+            //if (theSessionRef->GetRefCount() == 0)
+            //{   
+            //    //qtss_printf("QTSSReflectorModule.cpp:RemoveOutput UnRegister and delete session =%p refcount=%"_U32BITARG_"\n", theSessionRef, theSessionRef->GetRefCount() ) ;       
+            //    sSessionMap->UnRegister(theSessionRef);
+            //    delete inSession;
+            //}
 
         }
     }

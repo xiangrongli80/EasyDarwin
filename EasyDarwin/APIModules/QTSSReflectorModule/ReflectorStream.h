@@ -56,11 +56,31 @@
 #include "ReflectorOutput.h"
 #include "atomic.h"
 
+/*fantasy add this*/
+#include "keyframecache.h"
+
 //This will add some printfs that are useful for checking the thinning
 #define REFLECTOR_THINNING_DEBUGGING 0 
+#define MAX_CACHE_SIZE  1024*1024*2
 
 //Define to use new potential workaround for NAT problems
 #define NAT_WORKAROUND 1
+
+typedef struct FU_Indicator_tag
+{
+    unsigned char F:1;
+    unsigned char nRI:2;
+    unsigned char type:5;//
+}FAU_Indicator;
+
+typedef struct FU_Head_tag
+{
+    unsigned char nalu_type:5;//little 5 bit
+    unsigned char r:1; 
+    unsigned char e:1;    
+    unsigned char s:1;//high bit    
+}FU_Head;
+
 
 class ReflectorPacket;
 class ReflectorSender;
@@ -84,7 +104,18 @@ class ReflectorPacket
 
         ~ReflectorPacket() {}
         
-        void    SetPacketData(char *data, UInt32 len) { Assert(kMaxReflectorPacketSize > len); if (len > 0) memcpy(this->fPacketPtr.Ptr,data,len); this->fPacketPtr.Len = len;}
+        void    SetPacketData(char *data, UInt32 len) 
+		{ 
+			Assert(kMaxReflectorPacketSize > len);
+
+			if(len > kMaxReflectorPacketSize)
+				len = kMaxReflectorPacketSize;
+
+			if (len > 0) 
+				memcpy(this->fPacketPtr.Ptr,data,len); 
+			this->fPacketPtr.Len = len;
+		}
+
         Bool16  IsRTCP() { return fIsRTCP; }
 inline  UInt32  GetPacketRTPTime();
 inline  UInt16  GetPacketRTPSeqNum();
@@ -95,7 +126,7 @@ inline  SInt64  GetPacketNTPTime();
 
         enum
         {
-            kMaxReflectorPacketSize = 2060    //jm 5/02 increased from 2048 by 12 bytes for test bytes appended to packets
+            kMaxReflectorPacketSize = 10240    //jm 5/02 increased from 2048 by 12 bytes for test bytes appended to packets
         };
 
         UInt32      fBucketsSeenThisPacket;
@@ -282,7 +313,7 @@ class ReflectorSender : public UDPDemuxerTask
     OSQueueElem* GetClientBufferStartPacket() { return this->GetClientBufferStartPacketOffset(0); };
 
     //->geyijyn@20150427
-    //--重新定位书签位置
+    //--脰脴脨脗露篓脦禄脢茅脟漏脦禄脰脙
     //<-
     Bool16 NeedRelocateBookMark(OSQueueElem* currentElem);
     OSQueueElem* GetNewestKeyFrameFirstPacket(OSQueueElem* currentElem,SInt64 offsetMsec);
@@ -501,6 +532,9 @@ inline  void                    UpdateBitRate(SInt64 currentTime);
         
         friend class ReflectorSocket;
         friend class ReflectorSender;
+
+public:
+		CKeyFrameCache    *pkeyFrameCache;		
 };
 
 

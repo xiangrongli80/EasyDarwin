@@ -57,15 +57,14 @@ enum
 };
 typedef UInt32 HTTPMethod;
 
-// HTTP Types
-// Methods
+// HTTPTypes
 enum
 {
     httpRequestType		= 0,
     httpResponseType	= 1,
 
-    httpNumTypes		= 3,
-    httpIllegalType		= 3
+    httpNumTypes		= 2,
+    httpIllegalType		= 2
 };
 typedef UInt32 HTTPType;
 

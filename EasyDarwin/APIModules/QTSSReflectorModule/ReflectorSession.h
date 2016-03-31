@@ -95,14 +95,17 @@ class ReflectorSession
         
         enum
         {
-            kMarkSetup = 0,     //After SetupReflectorSession is called, IsSetup returns true
-            kDontMarkSetup = 1, //After SetupReflectorSession is called, IsSetup returns false
-            kIsPushSession = 2  // When setting up streams handle port conflicts by allocating.
+            kMarkSetup = 1,     //After SetupReflectorSession is called, IsSetup returns true
+            kDontMarkSetup = 2, //After SetupReflectorSession is called, IsSetup returns false
+            kIsPushSession = 4  // When setting up streams handle port conflicts by allocating.
         };
         
         QTSS_Error      SetupReflectorSession(SourceInfo* inInfo, QTSS_StandardRTSP_Params* inParams,
                                                 UInt32 inFlags = kMarkSetup, Bool16 filterState = true, UInt32 filterTimeout = 30);
-                                                
+                            
+		QTSS_Error		SetSessionName();
+		QTSS_Error		StartHLSSession();
+		QTSS_Error		StopHLSSession();
         // Packets get forwarded by attaching ReflectorOutput objects to a ReflectorSession.
 
         void    AddOutput(ReflectorOutput* inOutput, Bool16 isClient);
@@ -129,6 +132,9 @@ class ReflectorSession
         StrPtrLen*      GetLocalSDP()       { return &fLocalSDP; }
         StrPtrLen*      GetSourcePath()     { return &fSourceID; }
         Bool16          IsSetup()           { return fIsSetup; }
+
+		char*			GetSessionName()	{ return fSessionName; }
+
         ReflectorStream*GetStreamByIndex(UInt32 inIndex) { return fStreamArray[inIndex]; }
         void AddBroadcasterClientSession(QTSS_StandardRTSP_Params* inParams);
         QTSS_ClientSessionObject GetBroadcasterSession() { return fBroadcasterSession;}
@@ -163,7 +169,7 @@ class ReflectorSession
         
         SInt64  GetInitTimeMS()   { return fInitTimeMS; }
 
-       void SetHasBufferedStreams(Bool16 enableBuffer) { fHasBufferedStreams = enableBuffer; } 
+		void	SetHasBufferedStreams(Bool16 enableBuffer) { fHasBufferedStreams = enableBuffer; } 
      
     private:
     
@@ -173,6 +179,11 @@ class ReflectorSession
         // For storage in the session map       
         OSRef       fRef;
         StrPtrLen   fSourceID;
+		char*	fSessionName;
+
+		// HLS Session
+		Bool16		fHLSLive;
+
         OSQueueElem fQueueElem; // Relay uses this.
         
         unsigned int        fNumOutputs;

@@ -22,7 +22,6 @@
  * @APPLE_LICENSE_HEADER_END@
  *
  */
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -227,9 +226,9 @@ XMLTag::XMLTag(char* tagName) :
 XMLTag::~XMLTag()
 {
     if (fTag)
-        delete fTag;
+        delete [] fTag;
     if (fValue)
-        delete fValue;      
+        delete [] fValue;      
         
     OSQueueElem* elem;
     while ((elem = fAttributes.DeQueue()) != NULL)
@@ -686,7 +685,7 @@ XMLAttribute::XMLAttribute()
 XMLAttribute::~XMLAttribute()
 {
     if (fAttrName)
-        delete fAttrName;
+        delete [] fAttrName;
     if (fAttrValue)
-        delete fAttrValue;      
+        delete [] fAttrValue;      
 }

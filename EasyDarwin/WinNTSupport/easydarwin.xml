@@ -36,10 +36,10 @@
 		<PREF NAME="error_logging" TYPE="Bool16" >true</PREF>
 		<PREF NAME="screen_logging" TYPE="Bool16" >true</PREF>
 		<PREF NAME="error_logfile_verbosity" TYPE="UInt32" >3</PREF>
-		<PREF NAME="error_logfile_size" TYPE="UInt32" >256000</PREF>
+		<PREF NAME="error_logfile_size" TYPE="UInt32" >512000</PREF>
 		<PREF NAME="error_logfile_interval" TYPE="UInt32" >7</PREF>
-		<PREF NAME="error_logfile_dir" >./Logs</PREF>
-		<PREF NAME="error_logfile_name" >Error</PREF>
+		<PREF NAME="error_logfile_dir" >./Logs/</PREF>
+		<PREF NAME="error_logfile_name" >EasyDarwin</PREF>
 		<PREF NAME="module_folder" >./QTSSModules</PREF>
 		<PREF NAME="safe_play_duration" TYPE="UInt32" >600</PREF>
 		<PREF NAME="average_bandwidth_update" TYPE="UInt32" >60</PREF>
@@ -47,11 +47,11 @@
 		<PREF NAME="auto_restart" TYPE="Bool16" >true</PREF>
 		<PREF NAME="break_on_assert" TYPE="Bool16" >false</PREF>
 		<PREF NAME="bind_ip_addr" >0</PREF>
-		<PREF NAME="movie_folder" >./Movies</PREF>
-		<PREF NAME="maximum_bandwidth" TYPE="SInt32" >102400</PREF>
-		<PREF NAME="maximum_connections" TYPE="SInt32" >1000</PREF>
+		<PREF NAME="movie_folder" >./Movies/</PREF>
+		<PREF NAME="maximum_bandwidth" TYPE="SInt32" >1024000</PREF>
+		<PREF NAME="maximum_connections" TYPE="SInt32" >10000</PREF>
 		<PREF NAME="rtp_timeout" TYPE="UInt32" >120</PREF>
-		<PREF NAME="real_rtsp_timeout" TYPE="UInt32" >180</PREF>
+		<PREF NAME="real_rtsp_timeout" TYPE="UInt32" >30</PREF>
 		<PREF NAME="rtsp_timeout" TYPE="UInt32" >0</PREF>
 		<PREF NAME="run_user_name" ></PREF>
 		<PREF NAME="run_group_name" ></PREF>
@@ -83,9 +83,9 @@
 		<PREF NAME="reliable_udp_dirs" >\</PREF>
 		<PREF NAME="reliable_udp_printfs" TYPE="Bool16" >false</PREF>
 		<PREF NAME="RTSP_error_message" TYPE="Bool16" >false</PREF>
-		<PREF NAME="run_num_threads" TYPE="UInt32" >0</PREF>
+		<PREF NAME="run_num_threads" TYPE="UInt32" >10</PREF>
 		<PREF NAME="overbuffer_rate" TYPE="Float32" >2.0</PREF>
-		<PREF NAME="RTSP_debug_printfs" TYPE="Bool16" >false</PREF>
+		<PREF NAME="RTSP_debug_printfs" TYPE="Bool16" >true</PREF>
 		<PREF NAME="enable_monitor_stats_file" TYPE="Bool16" >true</PREF>
 		<PREF NAME="monitor_stats_file_interval_seconds" TYPE="UInt32" >10</PREF>
 		<PREF NAME="monitor_stats_file_name" >server_status</PREF>
@@ -121,11 +121,12 @@
 		<PREF NAME="udp_monitor_dest_ip" >127.0.0.1</PREF>
 		<PREF NAME="udp_monitor_src_ip" >0.0.0.0</PREF>
 		<PREF NAME="enable_allow_guest_default" TYPE="Bool16" >true</PREF>
-		<PREF NAME="run_num_rtsp_threads" TYPE="UInt32" >1</PREF>
+		<PREF NAME="run_num_rtsp_threads" TYPE="UInt32" >3</PREF>
 		<PREF NAME="player_requires_disable_3gpp_rate_adapt" ></PREF>
 		<PREF NAME="player_requires_3gpp_target_time" ></PREF>
 		<PREF NAME="3gpp_target_time_milliseconds" TYPE="UInt32" >3000</PREF>
 		<PREF NAME="player_requires_disable_thinning" ></PREF>
+		<PREF NAME="http_service_port" TYPE="UInt16" >8080</PREF>
 	</SERVER>
 	<MODULE NAME="QTSSAccessLogModule" >
 		<PREF NAME="request_logfile_interval" TYPE="UInt32" >7</PREF>
@@ -174,7 +175,7 @@
 	</MODULE>
 	<MODULE NAME="QTSSHttpFileModule" >
 		<PREF NAME="http_xfer_enabled" TYPE="Bool16" >false</PREF>
-		<PREF NAME="http_folder" >c:\Program Files\Darwin Streaming Server\http</PREF>
+		<PREF NAME="http_folder" >./http</PREF>
 		<PREF NAME="http_logging" TYPE="Bool16" >true</PREF>
 		<PREF NAME="http_logfile_name" >Http</PREF>
 		<PREF NAME="http_logfile_dir" >./httpLogs</PREF>
@@ -184,11 +185,11 @@
 	<MODULE NAME="QTSSReflectorModule" >
 		<PREF NAME="reflector_bucket_size" TYPE="UInt32" >16</PREF>
 		<PREF NAME="reflector_delay" TYPE="UInt32" >100</PREF>
-		<PREF NAME="allow_non_sdp_urls" TYPE="Bool16" >true</PREF>
+		<PREF NAME="allow_non_sdp_urls" TYPE="Bool16" >false</PREF>
 		<PREF NAME="enable_broadcast_push" TYPE="Bool16" >true</PREF>
 		<PREF NAME="enable_broadcast_announce" TYPE="Bool16" >true</PREF>
 		<PREF NAME="max_broadcast_announce_duration_secs" TYPE="UInt32" >0</PREF>
-		<PREF NAME="allow_duplicate_broadcasts" TYPE="Bool16" >false</PREF>
+		<PREF NAME="allow_duplicate_broadcasts" TYPE="Bool16" >true</PREF>
 		<PREF NAME="enforce_static_sdp_port_range" TYPE="Bool16" >false</PREF>
 		<PREF NAME="maximum_static_sdp_port" TYPE="UInt16" >65535</PREF>
 		<PREF NAME="minimum_static_sdp_port" TYPE="UInt16" >20000</PREF>
@@ -196,7 +197,7 @@
 		<PREF NAME="use_one_SSRC_per_stream" TYPE="Bool16" >true</PREF>
 		<PREF NAME="kill_clients_when_broadcast_stops" TYPE="Bool16" >false</PREF>
 		<PREF NAME="reflector_bucket_offset_delay_msec" TYPE="UInt32" >73</PREF>
-		<PREF NAME="reflector_buffer_size_sec" TYPE="UInt32" >0</PREF>
+		<PREF NAME="reflector_buffer_size_sec" TYPE="UInt32" >1</PREF>
 		<PREF NAME="reflector_use_in_packet_receive_time" TYPE="Bool16" >false</PREF>
 		<PREF NAME="reflector_in_packet_max_receive_sec" TYPE="UInt32" >60</PREF>
 		<PREF NAME="enable_rtp_play_info" TYPE="Bool16" >false</PREF>
@@ -217,6 +218,7 @@
 		<PREF NAME="force_rtp_info_sequence_and_time" TYPE="Bool16" >false</PREF>
 		<PREF NAME="BroadcasterGroup" >broadcaster</PREF>
 		<PREF NAME="ip_allow_list" >127.0.0.*</PREF>
+		<PREF NAME="hls_output_enabled" TYPE="Bool16" >false</PREF>
 	</MODULE>
 	<MODULE NAME="QTSSFlowControlModule" >
 		<PREF NAME="loss_thin_tolerance" TYPE="UInt32" >30</PREF>
@@ -243,10 +245,19 @@
 		<PREF NAME="enable_remote_admin" TYPE="Bool16" >true</PREF>
 		<PREF NAME="IPAccessList" >127.0.0.*</PREF>
 		<PREF NAME="AdministratorGroup" >admin</PREF>
+		<PREF NAME="http_port" TYPE="UInt16" >8088</PREF>
+		<PREF NAME="document_root" >./html/</PREF>
 	</MODULE>
 	<MODULE NAME="QTSSErrorLogModule" ></MODULE>
 	<MODULE NAME="QTSSPosixFileSysModule" ></MODULE>
-	<MODULE NAME="QTSSOnDemandRelayModule" >
-		<PREF NAME="device_prefs_file" >./devices.xml</PREF>
+	<MODULE NAME="EasyHLSModule" >
+		<PREF NAME="HTTP_ROOT_DIR" >http://127.0.0.1:80/</PREF>
+		<PREF NAME="M3U8_VERSION" TYPE="UInt32" >3</PREF>
+		<PREF NAME="ALLOW_CACHE" TYPE="Bool16" >false</PREF>
+		<PREF NAME="TARGET_DURATION" TYPE="UInt32" >4</PREF>
+		<PREF NAME="PLAYLIST_CAPACITY" TYPE="UInt32" >4</PREF>
+	</MODULE>
+	<MODULE NAME="EasyRelayModule" >
+		<PREF NAME="local_ip_address" >127.0.0.1</PREF>
 	</MODULE>
 </CONFIGURATION>

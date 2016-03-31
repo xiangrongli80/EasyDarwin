@@ -165,7 +165,7 @@ QTSS_Error  QTSSModule::SetupModule(QTSS_CallbacksPtr inCallbacks, QTSS_MainEntr
     char msgStr[2048];
     char* moduleName = NULL;
     (void)this->GetValueAsString (qtssModName, 0, &moduleName);
-    qtss_snprintf(msgStr, sizeof(msgStr), "Module Loaded...%s [%s]", moduleName, (fFragment==NULL)?"static":"dynamic");
+    qtss_snprintf(msgStr, sizeof(msgStr), "Loading Module...%s [%s]", moduleName, (fFragment==NULL)?"static":"dynamic");
     delete moduleName;
     QTSServerInterface::LogError(qtssMessageVerbosity, msgStr);
 	
@@ -251,9 +251,11 @@ SInt32 QTSSModule::GetPrivateRoleIndex(QTSS_Role apiRole)
         case QTSS_CloseFile_Role:           return kCloseFileRole           ;
         case QTSS_RequestEventFile_Role:    return kRequestEventFileRole    ;
         case QTSS_RTSPIncomingData_Role:    return kRTSPIncomingDataRole    ;  
-		case QTSS_RTSPRelayingData_Role:	return kRTSPRelayingDataRole	;
+
         case QTSS_StateChange_Role:         return kStateChangeRole         ;      
-        case QTSS_Interval_Role:            return kTimedIntervalRole       ;      
+        case QTSS_Interval_Role:            return kTimedIntervalRole       ;
+		case Easy_HLSOpen_Role:				return kHLSOpenRole				;
+		case Easy_HLSClose_Role:			return kHLSCloseRole			;
         default:
             return -1;
     }

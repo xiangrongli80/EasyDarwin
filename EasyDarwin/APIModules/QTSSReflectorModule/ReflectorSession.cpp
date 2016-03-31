@@ -42,6 +42,7 @@
 #include "atomic.h"
 
 #include "QTSSModuleUtils.h"
+#include "QTSServerInterface.h"
 
 #include <errno.h>
 
@@ -100,7 +101,9 @@ ReflectorSession::ReflectorSession(StrPtrLen* inSourceID, SourceInfo* inInfo)
     fBroadcasterSession(NULL),
     fInitTimeMS(OS::Milliseconds()),
     fHasBufferedStreams(false),
-	fRTSPRelaySession(NULL)
+	fRTSPRelaySession(NULL),
+	fSessionName(NULL),
+	fHLSLive(false)
 {
 
     fQueueElem.SetEnclosingObject(this);
@@ -108,14 +111,19 @@ ReflectorSession::ReflectorSession(StrPtrLen* inSourceID, SourceInfo* inInfo)
     {
         fSourceID.Ptr = NEW char[inSourceID->Len + 1];
         ::memcpy(fSourceID.Ptr, inSourceID->Ptr, inSourceID->Len);
+		fSourceID.Ptr[inSourceID->Len] = '\0';
         fSourceID.Len = inSourceID->Len;
         fRef.Set(fSourceID, this);
+
+		this->SetSessionName();
     }
 }
 
 
 ReflectorSession::~ReflectorSession()
 {
+	this->StopHLSSession();
+
 #if REFLECTOR_SESSION_DEBUGGING
     qtss_printf("Removing ReflectorSession: %s\n", fSourceInfoHTML.Ptr);
 #endif
@@ -152,7 +160,70 @@ ReflectorSession::~ReflectorSession()
     delete fSourceInfo;
     fLocalSDP.Delete();
     fSourceID.Delete();
+	if(fSessionName) delete[] fSessionName;
 }
+
+QTSS_Error ReflectorSession::SetSessionName()
+{
+	if (fSourceID.Len > 0)
+    {
+		char movieFolder[256] = { 0 };
+		UInt32 thePathLen = 256;
+		QTSServerInterface::GetServer()->GetPrefs()->GetMovieFolder(&movieFolder[0], &thePathLen);
+		StringParser parser(&fSourceID);
+		StrPtrLen strName;
+
+		parser.ConsumeLength(NULL,thePathLen);
+
+        parser.Expect('\\');
+		parser.ConsumeUntil(&strName,'\.');
+		fSessionName = NEW char[strName.Len + 1];
+		::memcpy(fSessionName, strName.Ptr, strName.Len);
+		fSessionName[strName.Len] = '\0';
+		return QTSS_NoErr;
+    }
+	return QTSS_Unimplemented;
+}
+
+QTSS_Error ReflectorSession::StartHLSSession()
+{
+	QTSS_Error theErr = QTSS_NoErr;
+
+	if(!fHLSLive) 
+	{
+		// Get the ip addr out of the prefs dictionary
+		UInt16 thePort = 554;
+		UInt32 theLen = sizeof(UInt16);
+		QTSS_Error theErr = QTSS_NoErr;
+		theErr = QTSServerInterface::GetServer()->GetPrefs()->GetValue(qtssPrefsRTSPPorts, 0, &thePort, &theLen);
+		Assert(theErr == QTSS_NoErr);   
+
+		//构造本地URL
+		char url[QTSS_MAX_URL_LENGTH] = { 0 };
+		qtss_sprintf(url,"rtsp://127.0.0.1:%d/%s.sdp", thePort, fSessionName);
+
+		Easy_StartHLSession(fSessionName, url, 0, NULL);
+		//if(QTSS_NoErr == theErr)
+			fHLSLive = true;
+	}
+
+	return theErr;
+}
+
+QTSS_Error ReflectorSession::StopHLSSession()
+{
+	QTSS_Error theErr = QTSS_NoErr;
+
+	if(fHLSLive) 
+	{
+		theErr = Easy_StopHLSession(fSessionName);
+		if(QTSS_NoErr == theErr)
+			fHLSLive = false;
+	}
+
+	return theErr;
+}
+
 
 QTSS_Error ReflectorSession::SetupReflectorSession(SourceInfo* inInfo, QTSS_StandardRTSP_Params* inParams, UInt32 inFlags, Bool16 filterState, UInt32 filterTimeout)
 {   
@@ -267,6 +338,7 @@ void ReflectorSession::AddBroadcasterClientSession(QTSS_StandardRTSP_Params* inP
     }
     fBroadcasterSession = inParams->inClientSession;
 }
+
 void    ReflectorSession::FormatHTML(StrPtrLen* inURL)
 {
     // Begin writing our source description HTML (used by the relay)

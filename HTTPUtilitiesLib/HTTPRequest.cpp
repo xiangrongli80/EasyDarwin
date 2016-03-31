@@ -38,32 +38,32 @@ static StrPtrLen sKeepAliveString("keep-alive", 10);
 static StrPtrLen sDefaultRealm("Streaming Server", 19);
 UInt8 HTTPRequest::sURLStopConditions[] =
 {
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 1, //0-9      //'\t' is a stop condition
-  1, 0, 0, 1, 0, 0, 0, 0, 0, 0, //10-19    //'\r' & '\n' are stop conditions
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //20-29
-  0, 0, 1, 0, 0, 0, 0, 0, 0, 0, //30-39    //' '
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //40-49
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //50-59
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //60-69
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //70-79
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //80-89
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //90-99
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //100-109
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //110-119
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //120-129
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //130-139
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //140-149
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //150-159
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //160-169
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //170-179
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //180-189
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //190-199
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //200-209
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //210-219
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //220-229
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //230-239
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //240-249
-  0, 0, 0, 0, 0, 0                         //250-255
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, //0-9      //'\t' is a stop condition
+    1, 0, 0, 1, 0, 0, 0, 0, 0, 0, //10-19    //'\r' & '\n' are stop conditions
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //20-29
+    0, 0, 1, 0, 0, 0, 0, 0, 0, 0, //30-39    //' '
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //40-49
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //50-59
+    0, 0, 0, 1, 0, 0, 0, 0, 0, 0, //60-69   //'?' 
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //70-79
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //80-89
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //90-99
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //100-109
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //110-119
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //120-129
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //130-139
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //140-149
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //150-159
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //160-169
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //170-179
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //180-189
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //190-199
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //200-209
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //210-219
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //220-229
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //230-239
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //240-249
+    0, 0, 0, 0, 0, 0             //250-255
 };
 
 // Constructor
@@ -74,15 +74,16 @@ HTTPRequest::HTTPRequest(StrPtrLen* serverHeader, StrPtrLen* requestPtr)
    
     // Set initial state
     fRequestHeader = *requestPtr;
-    fResponseHeader = NULL;
-    fResponseFormatter = NULL;
+    fHTTPHeader = NULL;
+    fHTTPHeaderFormatter = NULL;
     fMethod = httpIllegalMethod;
     fVersion = httpIllegalVersion;
     fAbsoluteURI = NULL;
     fRelativeURI = NULL;
     fAbsoluteURIScheme = NULL;
     fHostHeader = NULL;
-    fRequestPath = NULL;    
+    fRequestPath = NULL;  
+	fQueryString = NULL;
     fStatusCode = httpOK;
     fRequestKeepAlive = false; // Default value when there is no version string
 
@@ -91,7 +92,7 @@ HTTPRequest::HTTPRequest(StrPtrLen* serverHeader, StrPtrLen* requestPtr)
 }
 
 // Constructor for creating a response only
-HTTPRequest::HTTPRequest(StrPtrLen* serverHeader)
+HTTPRequest::HTTPRequest(StrPtrLen* serverHeader, HTTPType httpType)
 {
     // Store the pointer to the server header field
     fSvrHeader = *serverHeader;
@@ -106,31 +107,34 @@ HTTPRequest::HTTPRequest(StrPtrLen* serverHeader)
     fRelativeURI = NULL;
     fAbsoluteURIScheme = NULL;
     fHostHeader = NULL;
-    fRequestPath = NULL;    
+    fRequestPath = NULL; 
+	fQueryString = NULL;
     fStatusCode = 0;
     fRequestKeepAlive = false; 
     
     // We require the response  but we allocate memory only when we call
     // CreateResponseHeader
-    fResponseHeader = NULL;
-    fResponseFormatter = NULL;
+    fHTTPHeader = NULL;
+    fHTTPHeaderFormatter = NULL;
 
-	fHTTPType = httpResponseType;
+	fHTTPType = httpType;
 }
 
 // Destructor
  HTTPRequest::~HTTPRequest()
  {
-    if (fResponseHeader != NULL)
+    if (fHTTPHeader != NULL)
     {
-        if (fResponseHeader->Ptr != NULL)
-            delete fResponseHeader->Ptr;
-        delete fResponseHeader;
+        if (fHTTPHeader->Ptr != NULL)
+            delete fHTTPHeader->Ptr;
+        delete fHTTPHeader;
      }
-    if (fResponseFormatter != NULL) 
-        delete fResponseFormatter;
+    if (fHTTPHeaderFormatter != NULL) 
+        delete fHTTPHeaderFormatter;
     if (fRequestPath != NULL)
         delete [] fRequestPath;  
+	if (fQueryString != NULL)
+		delete [] fQueryString;
  }
 //Parses the request
 QTSS_Error HTTPRequest::Parse()
@@ -151,7 +155,7 @@ QTSS_Error HTTPRequest::Parse()
 	// 解析第一行
     QTSS_Error err = ParseRequestLine(&parser);
     if (err != QTSS_NoErr)
-            return err;
+		return err;
 
 	if(fHTTPType == httpResponseType)
 	{
@@ -227,7 +231,6 @@ QTSS_Error HTTPRequest::ParseRequestLine(StringParser* parser)
 
 QTSS_Error HTTPRequest::ParseURI(StringParser* parser)
 {
-
     // read in the complete URL into fRequestAbsURI
     parser->ConsumeUntil(&fAbsoluteURI, sURLStopConditions);
   
@@ -240,6 +243,34 @@ QTSS_Error HTTPRequest::ParseURI(StringParser* parser)
             //if it is a full URL, store the scheme and host name
             urlParser.ConsumeLength(&fAbsoluteURIScheme, 7); //consume "http://"
             urlParser.ConsumeUntil(&fHostHeader, '/');
+    }
+
+    StrPtrLen queryString;
+    //this->SetVal(qtssRTSPReqQueryString, queryString.Ptr, queryString.Len);
+    if ( parser->GetDataRemaining() > 0 )
+    {   
+        if ( parser->PeekFast() == '?' )
+        {       
+            // we've got some CGI param
+            parser->ConsumeLength(&queryString, 1); // toss '?'
+            
+            // consume the rest of the line..
+            parser->ConsumeUntilWhitespace(&queryString);
+            
+			if(queryString.Len)
+			{
+				if (fQueryString != NULL)
+				{
+					delete [] fQueryString;
+					fQueryString = NULL;
+				}
+
+				fQueryString = NEW char[queryString.Len + 1];
+				::memcpy(fQueryString, queryString.Ptr, queryString.Len); 
+				fQueryString[queryString.Len] = '\0';
+				//this->SetVal(qtssRTSPReqQueryString, queryString.Ptr, queryString.Len);
+			}
+        }
     }
   
     // whatever is in this position is the relative URI
@@ -264,11 +295,16 @@ QTSS_Error HTTPRequest::ParseURI(StringParser* parser)
         return QTSS_BadArgument;
     }
 
+	if (fRequestPath != NULL)
+        delete [] fRequestPath; 
+
 	fRequestPath = NULL;
-    ////fRequestPath = NEW char[theBytesWritten + 1];
-    ////::memcpy(fRequestPath, relativeURIDecoded + 1, theBytesWritten); 
-    //////delete relativeURIDecoded;
-    ////fRequestPath[theBytesWritten] = '\0';
+
+    fRequestPath = NEW char[theBytesWritten + 1];
+    ::memcpy(fRequestPath, relativeURIDecoded + 1, theBytesWritten); 
+    //delete relativeURIDecoded;
+    fRequestPath[theBytesWritten] = '\0';
+
     return QTSS_NoErr;
 }
 
@@ -349,6 +385,17 @@ void HTTPRequest::PutStatusLine(StringFormatter* putStream, HTTPStatusCode statu
     putStream->PutEOL();
 }
 
+void HTTPRequest::PutMethedLine(StringFormatter* putStream, HTTPMethod method,
+								HTTPVersion version)
+{
+	putStream->Put(*(HTTPProtocol::GetMethodString(method)));
+    putStream->PutSpace();
+    putStream->Put("/");
+    putStream->PutSpace();
+    putStream->Put(*(HTTPProtocol::GetVersionString(version)));
+    putStream->PutEOL();
+}
+
 StrPtrLen* HTTPRequest::GetHeaderValue(HTTPHeader inHeader)
 {
     if ( inHeader !=  httpIllegalHeader )
@@ -356,46 +403,77 @@ StrPtrLen* HTTPRequest::GetHeaderValue(HTTPHeader inHeader)
     return NULL;
 }
 
-void HTTPRequest:: CreateResponseHeader(HTTPStatusCode statusCode, HTTPVersion version)
+Bool16 HTTPRequest::CreateResponseHeader(HTTPStatusCode statusCode, HTTPVersion version)
 {
+	if(fHTTPType != httpResponseType) return false;
+
     // If we are creating a second response for the same request, make sure and
     // deallocate memory for old response and allocate fresh memory
-    if (fResponseFormatter != NULL) 
+    if (fHTTPHeaderFormatter != NULL) 
     {
-        if(fResponseHeader->Ptr != NULL)
-            delete fResponseHeader->Ptr;
-        delete fResponseHeader;
-        delete fResponseFormatter;
+        if(fHTTPHeader->Ptr != NULL)
+            delete fHTTPHeader->Ptr;
+        delete fHTTPHeader;
+        delete fHTTPHeaderFormatter;
     }
     
     // Allocate memory for the response when you first create it
     char* responseString = NEW char[kMinHeaderSizeInBytes];
-    fResponseHeader = NEW StrPtrLen(responseString, kMinHeaderSizeInBytes);
-    fResponseFormatter = NEW ResizeableStringFormatter(fResponseHeader->Ptr, fResponseHeader->Len);
+    fHTTPHeader = NEW StrPtrLen(responseString, kMinHeaderSizeInBytes);
+    fHTTPHeaderFormatter = NEW ResizeableStringFormatter(fHTTPHeader->Ptr, fHTTPHeader->Len);
     
     //make a partial header for the given version and status code
-    PutStatusLine(fResponseFormatter, statusCode, version);
+    PutStatusLine(fHTTPHeaderFormatter, statusCode, version);
     Assert(fSvrHeader.Ptr != NULL);
-    //fResponseFormatter->Put(fSvrHeader);
-    //fResponseFormatter->PutEOL();
-	//AppendResponseHeader(httpServerHeader,&fSvrHeader);
-    fResponseHeader->Len = fResponseFormatter->GetCurrentOffset();
+
+	AppendResponseHeader(httpServerHeader,&fSvrHeader);
+    fHTTPHeader->Len = fHTTPHeaderFormatter->GetCurrentOffset();
+
+	return true;
 }
 
-StrPtrLen* HTTPRequest::GetCompleteResponseHeader()
+Bool16 HTTPRequest::CreateRequestHeader(HTTPMethod method, HTTPVersion version)
 {
-    fResponseFormatter->PutEOL();
-    fResponseHeader->Len = fResponseFormatter->GetCurrentOffset();
-    return fResponseHeader;
+	if(fHTTPType != httpRequestType) return false;
+
+    // If we are creating a second response for the same request, make sure and
+    // deallocate memory for old response and allocate fresh memory
+    if (fHTTPHeaderFormatter != NULL) 
+    {
+        if(fHTTPHeader->Ptr != NULL)
+            delete fHTTPHeader->Ptr;
+        delete fHTTPHeader;
+        delete fHTTPHeaderFormatter;
+    }
+    
+    // Allocate memory for the response when you first create it
+    char* responseString = NEW char[kMinHeaderSizeInBytes];
+    fHTTPHeader = NEW StrPtrLen(responseString, kMinHeaderSizeInBytes);
+    fHTTPHeaderFormatter = NEW ResizeableStringFormatter(fHTTPHeader->Ptr, fHTTPHeader->Len);
+    
+    //make a partial header for the given version and status code
+    PutMethedLine(fHTTPHeaderFormatter, method, version);
+    Assert(fSvrHeader.Ptr != NULL);
+
+	AppendResponseHeader(httpServerHeader,&fSvrHeader);
+    fHTTPHeader->Len = fHTTPHeaderFormatter->GetCurrentOffset();
+	return true;
+}
+
+StrPtrLen* HTTPRequest::GetCompleteHTTPHeader()
+{
+    fHTTPHeaderFormatter->PutEOL();
+    fHTTPHeader->Len = fHTTPHeaderFormatter->GetCurrentOffset();
+    return fHTTPHeader;
 }
 
 void HTTPRequest::AppendResponseHeader(HTTPHeader inHeader, StrPtrLen* inValue)
 {
-    fResponseFormatter->Put(*(HTTPProtocol::GetHeaderString(inHeader)));
-    fResponseFormatter->Put(sColonSpace);
-    fResponseFormatter->Put(*inValue);
-    fResponseFormatter->PutEOL();
-    fResponseHeader->Len = fResponseFormatter->GetCurrentOffset();
+    fHTTPHeaderFormatter->Put(*(HTTPProtocol::GetHeaderString(inHeader)));
+    fHTTPHeaderFormatter->Put(sColonSpace);
+    fHTTPHeaderFormatter->Put(*inValue);
+    fHTTPHeaderFormatter->PutEOL();
+    fHTTPHeader->Len = fHTTPHeaderFormatter->GetCurrentOffset();
 }
 
 void HTTPRequest::AppendContentLengthHeader(UInt64 length_64bit)

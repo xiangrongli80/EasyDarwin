@@ -43,18 +43,17 @@
 #include "UDPSocketPool.h"
 #include "RTSPProtocol.h"
 #include "RTPPacketResender.h"
-#ifndef __MacOSX__
 #include "revision.h"
-#endif
+
 
 // STATIC DATA
 
 UInt32                  QTSServerInterface::sServerAPIVersion = QTSS_API_VERSION;
 QTSServerInterface*     QTSServerInterface::sServer = NULL;
 #if __MacOSX__
-StrPtrLen               QTSServerInterface::sServerNameStr("QTSS");
+StrPtrLen               QTSServerInterface::sServerNameStr("EasyDarwin");
 #else
-StrPtrLen               QTSServerInterface::sServerNameStr("DSS");
+StrPtrLen               QTSServerInterface::sServerNameStr("EasyDarwin");
 #endif
 
 // kVersionString from revision.h, include with -i at project level
@@ -190,6 +189,8 @@ QTSServerInterface::QTSServerInterface()
  :  QTSSDictionary(QTSSDictionaryMap::GetMap(QTSSDictionaryMap::kServerDictIndex), &fMutex),
     fSocketPool(NULL),
     fRTPMap(NULL),
+	fHLSMap(NULL),
+	fReflectorSessionMap(NULL),
     fSrvrPrefs(NULL),
     fSrvrMessages(NULL),
     fServerState(qtssStartingUpState),
